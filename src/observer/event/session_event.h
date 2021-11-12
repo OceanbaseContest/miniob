@@ -17,9 +17,12 @@ See the Mulan PSL v2 for more details. */
 
 #include <string.h>
 #include <string>
+#include <vector>
+#include <sstream>
 
 #include "common/seda/stage_event.h"
 #include "net/connection_context.h"
+#include "sql/executor/tuple.h"
 
 class SessionEvent : public common::StageEvent {
 public:
@@ -35,11 +38,18 @@ public:
   int get_response_len() const;
   char *get_request_buf();
   int get_request_buf_len();
+  //add zjx[select]b:20211023
+  void set_tupleset(TupleSet* tuple_sets);
+  void get_tupleset(TupleSet &tuple_sets);
+  void print_to_stream(std::stringstream &ss);
+  //e:20211023
 
 private:
   ConnectionContext *client_;
 
   std::string response_;
+
+  TupleSet tuple_sets_; //add zjx[select]b:20211023
 };
 
 #endif //__OBSERVER_SESSION_SESSIONEVENT_H__

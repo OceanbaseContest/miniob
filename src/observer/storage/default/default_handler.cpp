@@ -127,9 +127,15 @@ RC DefaultHandler::create_table(const char *dbname, const char *relation_name, i
   return db->create_table(relation_name, attribute_count, attributes);
 }
 
+//add bzb [drop table] 20211022:b
 RC DefaultHandler::drop_table(const char *dbname, const char *relation_name) {
-  return RC::GENERIC_ERROR;
+  Db *db = find_db(dbname);
+  if (db == nullptr) {
+    return RC::SCHEMA_DB_NOT_OPENED;
+  }
+  return db->drop_table(relation_name);
 }
+//20211022:e
 
 RC DefaultHandler::create_index(Trx *trx, const char *dbname, const char *relation_name, const char *index_name, const char *attribute_name) {
   Table *table = find_table(dbname, relation_name);
@@ -143,15 +149,17 @@ RC DefaultHandler::drop_index(Trx *trx, const char *dbname, const char *relation
 
   return RC::GENERIC_ERROR;
 }
-
-RC DefaultHandler::insert_record(Trx *trx, const char *dbname, const char *relation_name, int value_num, const Value *values) {
+// add szj [insert multi values]20211029:b
+RC DefaultHandler::insert_record(Trx *trx, const char *dbname, const char *relation_name, int value_num, const Value *values, int record_num) {
   Table *table = find_table(dbname, relation_name);
   if (nullptr == table) {
     return RC::SCHEMA_TABLE_NOT_EXIST;
   }
-
-  return table->insert_record(trx, value_num, values);
+  LOG_INFO("find table success, i'm in insert_record!");
+  return table->insert_record(trx, value_num, values, record_num);
 }
+// add:e
+
 RC DefaultHandler::delete_record(Trx *trx, const char *dbname, const char *relation_name,
                                  int condition_num, const Condition *conditions, int *deleted_count) {
   Table *table = find_table(dbname, relation_name);
@@ -174,7 +182,16 @@ RC DefaultHandler::update_record(Trx *trx, const char *dbname, const char *relat
     return RC::SCHEMA_TABLE_NOT_EXIST;
   }
 
-  return table->update_record(trx, attribute_name, value, condition_num, conditions, updated_count);
+  // add szj [update sql execute]20211024:b
+  CompositeConditionFilter condition_filter;
+  RC rc = condition_filter.init(*table, conditions, condition_num);
+  if (rc != RC::SUCCESS) {
+    return rc;
+  }
+  
+  // 修改update函数接口
+  return table->update_record(trx, attribute_name, value, &condition_filter, updated_count);
+  // add:e
 }
 
 Db *DefaultHandler::find_db(const char *dbname) const {

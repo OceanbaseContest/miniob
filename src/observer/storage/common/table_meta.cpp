@@ -281,6 +281,16 @@ int TableMeta::get_serial_size() const {
   return -1;
 }
 
+//add bzb [drop table] 20211022:b
+void TableMeta::drop_all_index_file(std::string base_dir, std::string tb_name) {
+  for (const IndexMeta &index : indexes_) {
+    std::string index_file = base_dir + "/" + tb_name + "-" + index.name() + ".index";
+    std::remove(index_file.c_str());
+    LOG_INFO("drop index_file = %s", index_file.c_str());
+  }
+}
+//20211022:e
+
 void TableMeta::to_string(std::string &output) const {
 }
 

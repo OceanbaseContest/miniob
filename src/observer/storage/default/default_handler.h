@@ -122,8 +122,9 @@ public:
    * @param values
    * @return
    */
-  RC insert_record(Trx * trx, const char *dbname, const char *relation_name, int value_num, const Value *values);
-
+  // add szj [insert multi values]20211029:b
+  RC insert_record(Trx * trx, const char *dbname, const char *relation_name, int value_num, const Value *values, int record_num);
+  // add:e
   /**
    * 该函数用来删除relName表中所有满足指定条件的元组以及该元组对应的索引项。
    * 如果没有指定条件，则此方法删除relName关系中所有元组。

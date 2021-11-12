@@ -33,7 +33,7 @@ typedef int PageNum;
 #define BP_PAGE_SIZE (1 << 12)
 #define BP_PAGE_DATA_SIZE (BP_PAGE_SIZE - sizeof(PageNum))
 #define BP_FILE_SUB_HDR_SIZE (sizeof(BPFileSubHeader))
-#define BP_BUFFER_SIZE 50
+#define BP_BUFFER_SIZE 1000
 #define MAX_OPEN_FILE 1024
 
 typedef struct {
@@ -47,13 +47,16 @@ typedef struct {
   int allocated_pages;
 } BPFileSubHeader;
 
+//add bzb [LRU+LFU] 20211031:b
 typedef struct {
   bool dirty;
   unsigned int pin_count;
   unsigned long acc_time;
   int file_desc;
   Page page;
+  unsigned int LFU_count;
 } Frame;
+//20211031:e
 
 typedef struct {
   bool open;
@@ -116,6 +119,9 @@ public:
 
 class DiskBufferPool {
 public:
+  //add bzb [LRU+LFU] 20211031:b
+  RC get_FileHandle (int file_id, BPFileHandle* &FileHandle);
+  //20211031:e
   /**
   * 创建一个名称为指定文件名的分页文件
   */
@@ -166,12 +172,22 @@ public:
    * @param page_num 如果不指定page_num 将刷新所有页
    */
   RC force_page(int file_id, PageNum page_num);
-
+//add bzb [drop table] 20211022:b
+  RC force_all_pages(int file_id);
+//20211022:e
   /**
    * 标记指定页面为“脏”页。如果修改了页面的内容，则应调用此函数，
    * 以便该页面被淘汰出缓冲区时系统将新的页面数据写入磁盘文件
    */
   RC mark_dirty(BPPageHandle *page_handle);
+
+  //add bzb [LRU+LFU] 20211031:b
+  /**
+   * 自增指定页面LFU_count。如果使用了frame，则应调用此函数，
+   * 以便页面淘汰算法的实现
+   */
+  //RC increase_LFU_count(BPPageHandle *page_handle);
+  //20211031:e
 
   /**
    * 此函数用于解除pageHandle对应页面的驻留缓冲区限制。
@@ -180,6 +196,10 @@ public:
    * 因此在该页面使用完之后应调用此函数解除该限制，使得该页面此后可以正常地被淘汰出缓冲区
    */
   RC unpin_page(BPPageHandle *page_handle);
+
+  //add bzb [LRU+LFU] 20211031:b
+  RC unpin_page_to_0(BPPageHandle *page_handle);
+  //20211031:e
 
   /**
    * 获取文件的总页数

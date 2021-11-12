@@ -16,6 +16,7 @@ See the Mulan PSL v2 for more details. */
 #include "sql/parser/parse.h"
 #include "rc.h"
 #include "common/log/log.h"
+#include <string.h> // add szj [select aggregate support]20211106
 
 RC parse(char *st, Query *sqln);
 
@@ -31,12 +32,80 @@ void relation_attr_init(RelAttr *relation_attr, const char *relation_name, const
   relation_attr->attribute_name = strdup(attribute_name);
 }
 
+// add szj [select aggregate support]20211106:b
+bool judge_one(int v) {
+  LOG_INFO("Let's fucking go!!!!!! judge_one");
+  bool flag = v == 1 ? true : false;
+  return flag;
+}
+// add:e
+
+// add szj [select aggregate support]20211106:b
+void relation_col_attr_init(ColAttr *relation_attr, const char *relation_name, const char *attribute_name, const char *aggregate_name) {
+  LOG_INFO("get into relation_col_attr_init!!!!");
+  if (relation_name != nullptr) {
+    relation_attr->relAttr.relation_name = strdup(relation_name);
+  } else {
+    relation_attr->relAttr.relation_name = nullptr;
+  }
+  relation_attr->relAttr.attribute_name = strdup(attribute_name);
+  LOG_INFO("fINISH entering relation name!!!!");
+  LOG_INFO("Give me the fucking aggre_name %s", aggregate_name);
+  // 判断聚集类别
+  // if (strcasecmp(aggregate_name, "SUM") == 0) {
+  if (aggregate_name == nullptr) {
+    LOG_INFO("NONE!!!!ONE");
+    relation_attr->aggreType = NONE;
+  }
+  else if (strcasecmp(aggregate_name, "SUM") == 0) {
+    LOG_INFO("SUM!!!!");
+    relation_attr->aggreType = SUM;
+  } 
+  else if (strcasecmp(aggregate_name, "MAX") == 0) {
+    LOG_INFO("MAX!!!!");
+    relation_attr->aggreType = MAX;
+  }
+  else if (strcasecmp(aggregate_name, "AVG") == 0) {
+    LOG_INFO("AVG!!!!");
+    relation_attr->aggreType = AVG;
+  }
+  else if (strcasecmp(aggregate_name, "COUNT") == 0) {
+    LOG_INFO("COUNT!!!!");
+    relation_attr->aggreType = COUNTS;
+  }
+  //else if (strcasecmp(strdup(aggregate_name), "COUNT") == 0) {
+  //  relation_attr->aggreType = COUNT;
+  // } 
+  else {
+    LOG_INFO("NONE!!!!");
+    relation_attr->aggreType = NONE;
+  }
+  // relation_attr->aggreType = NONE;
+  // LOG_INFO("NONE!!!!");
+}
+// add:e
+
 void relation_attr_destroy(RelAttr *relation_attr) {
   free(relation_attr->relation_name);
   free(relation_attr->attribute_name);
   relation_attr->relation_name = nullptr;
   relation_attr->attribute_name = nullptr;
 }
+
+// add szj [select aggregate support]20211106:b
+void relation_col_attr_destroy(ColAttr *relation_attr) {
+  free(relation_attr->relAttr.attribute_name);
+  free(relation_attr->relAttr.relation_name);
+  // free(relation_attr->aggreType);
+  relation_attr->relAttr.relation_name = nullptr;
+  relation_attr->relAttr.attribute_name = nullptr;
+  relation_attr->aggreType = NONE;
+  // free(relation_attr->relation_name);
+  // free(relation_attr->attribute_name);
+  // relation_attr->relation_name = nullptr;
+  // relation_attr->attribute_name = nullptr;
+}
+// add:e
 
 void value_init_integer(Value *value, int v) {
   value->type = INTS;
@@ -100,12 +169,43 @@ void attr_info_destroy(AttrInfo *attr_info) {
 }
 
 void selects_init(Selects *selects, ...);
-void selects_append_attribute(Selects *selects, RelAttr *rel_attr) {
+
+// add szj [select aggregate support]20211106:b
+void selects_append_attribute(Selects *selects, ColAttr *rel_attr) {
+  LOG_INFO("SUCCESS COMPLETE SELECT CONTEXT!!");
   selects->attributes[selects->attr_num++] = *rel_attr;
+  if (rel_attr->aggreType == SUM || rel_attr->aggreType == MAX || rel_attr->aggreType == AVG || rel_attr->aggreType == COUNTS)
+    selects->aggr_flag = true;
+  LOG_INFO("Giving ColAttr Value Success!!");
 }
+// add:e
+
 void selects_append_relation(Selects *selects, const char *relation_name) {
   selects->relations[selects->relation_num++] = strdup(relation_name);
 }
+
+//add zjx[select]b:20211028
+//生成JoinNode算子
+void selects_append_joinnode(Selects *selects, const char *relation_name, int judge){
+  JoinNode* new_node = new JoinNode();
+  new_node->table_name_ = strdup(relation_name);
+  new_node->join_type_ = true;
+  new_node->done_ = true; // 叶子节点设置未已完成join
+  new_node->left_node_ = nullptr;
+  new_node->right_node_ = nullptr;
+
+  if(judge == 0){  //product access
+    selects->joinnodes[selects->joinnode_num++] = new_node;
+  } else if(judge == 1){  //join access
+    JoinNode* new_f_node = new JoinNode();
+    new_f_node->join_type_ = false; // 针对join算法
+    new_f_node->done_ = false;
+    new_f_node->left_node_ = selects->joinnodes[--selects->joinnode_num];
+    new_f_node->right_node_ = new_node;
+    selects->joinnodes[selects->joinnode_num++] = new_f_node;
+  } 
+}
+//e:20211028
 
 void selects_append_conditions(Selects *selects, Condition conditions[], size_t condition_num) {
   assert(condition_num <= sizeof(selects->conditions)/sizeof(selects->conditions[0]));
@@ -115,9 +215,10 @@ void selects_append_conditions(Selects *selects, Condition conditions[], size_t 
   selects->condition_num = condition_num;
 }
 
+
 void selects_destroy(Selects *selects) {
   for (size_t i = 0; i < selects->attr_num; i++) {
-    relation_attr_destroy(&selects->attributes[i]);
+    relation_col_attr_destroy(&selects->attributes[i]);
   }
   selects->attr_num = 0;
 
@@ -133,15 +234,22 @@ void selects_destroy(Selects *selects) {
   selects->condition_num = 0;
 }
 
-void inserts_init(Inserts *inserts, const char *relation_name, Value values[], size_t value_num) {
+// add szj [insert multi values]20211029:b
+void inserts_init(Inserts *inserts, const char *relation_name, Value values[], size_t value_num, size_t record_num) {
   assert(value_num <= sizeof(inserts->values)/sizeof(inserts->values[0]));
 
   inserts->relation_name = strdup(relation_name);
   for (size_t i = 0; i < value_num; i++) {
     inserts->values[i] = values[i];
+    LOG_INFO("!!!!!!!!!!! %d", *((int*)inserts->values[i].data));
   }
+  LOG_INFO("!!!!!!!!!!! %d", record_num);
+  LOG_INFO("!!!!!!!!!!! %d", value_num);
   inserts->value_num = value_num;
+  inserts->record_num = record_num;
 }
+// add:e
+
 void inserts_destroy(Inserts *inserts) {
   free(inserts->relation_name);
   inserts->relation_name = nullptr;
@@ -276,10 +384,13 @@ void load_data_destroy(LoadData *load_data) {
   load_data->file_name = nullptr;
 }
 
+//mod zjx[select]b:20211024
 void query_init(Query *query) {
   query->flag = SCF_ERROR;
   memset(&query->sstr, 0, sizeof(query->sstr));
+  query->next_sql = nullptr;
 }
+//e:20211024
 
 Query *query_create() {
   Query *query = (Query *)malloc(sizeof(Query));

@@ -25,6 +25,9 @@ extern double atof();
 WHITE_SAPCE      [\ \t\b\f]
 DIGIT            [0-9]+
 
+/* add szj [select aggregate support]20211106:b */
+/* AGGR_FUNC    	 [A-Za-z]+[A-Za-z]*  */
+/* add:e */
 ID               [A-Za-z_]+[A-Za-z0-9_]*
 DOT              \.
 QUOTE            [\'\"]
@@ -71,7 +74,15 @@ QUOTE            [\'\"]
 [Ll][Oo][Aa][Dd]			                   RETURN_TOKEN(LOAD);
 [Dd][Aa][Tt][Aa]	                       RETURN_TOKEN(DATA);
 [Ii][Nn][Ff][Ii][Ll][Ee]                 RETURN_TOKEN(INFILE);
-{ID}							                       yylval->string=strdup(yytext); RETURN_TOKEN(ID);
+	/* add zjx[select]b:20211024 */
+    /*[Jj][Ii][Oo][Nn]						 RETURN_TOKEN(JOIN); */
+  /* add szj [select aggregate support]20211106:b */
+	/* {AGGR_FUNC}										   	   yylval->string=strdup(yytext); RETURN_TOKEN(AGGR_FUNC); */
+ 	/* "1"													   RETURN_TOKEN(ONE); */
+ /* add:e */
+{ID}								                   yylval->string=strdup(yytext); RETURN_TOKEN(ID);
+
+
 "("								                       RETURN_TOKEN(LBRACE);
 ")"								                       RETURN_TOKEN(RBRACE);
 

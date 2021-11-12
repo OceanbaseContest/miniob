@@ -16,18 +16,51 @@ See the Mulan PSL v2 for more details. */
 #define __OBSERVER_SQL_PARSER_PARSE_DEFS_H__
 
 #include <stddef.h>
+#include <stdbool.h> //add zjx[select]b:20211029
 
-#define MAX_NUM 20
+#define MAX_NUM 50 // add szj [insert multi values]20211029
 #define MAX_REL_NAME 20
 #define MAX_ATTR_NAME 20
 #define MAX_ERROR_MESSAGE 20
 #define MAX_DATA 50
+
 
 //属性结构体
 typedef struct {
   char *relation_name;   // relation name (may be NULL) 表名
   char *attribute_name;  // attribute name              属性名
 } RelAttr;
+
+
+// add szj [select aggregate support]20211106:b
+// typedef enum { NONE, SUM, MAX, AVG, COUNT} AggrType;
+typedef enum { NONE, SUM, MAX, AVG, COUNTS} AggrType;
+// add:e
+
+// add szj [select aggregate support]20211106:b
+typedef struct {
+  RelAttr relAttr;
+  // 有个enum值来确认对应的aggregate类型
+  AggrType aggreType;
+} ColAttr;
+// add:e
+
+//add zjx[select]b:20211028
+/**
+ * @name: struct join_node
+ * @msg: 算子节点
+ */
+typedef struct join_node{
+  bool join_type_;              //join type:true for product,false for join
+  // JoinMethod joinmethod;     //join method
+  bool done_;                   //flag of whether the join operation has been done
+  char* table_name_;            
+  struct join_node* left_node_;
+  struct join_node* right_node_;
+  void* tupleset_;
+  void* join_condition;         //join condition
+} JoinNode;
+//e:20211028
 
 typedef enum {
   EQUAL_TO,     //"="     0
@@ -63,11 +96,14 @@ typedef struct _Condition {
 // struct of select
 typedef struct {
   size_t    attr_num;               // Length of attrs in Select clause
-  RelAttr   attributes[MAX_NUM];    // attrs in Select clause
+  ColAttr   attributes[MAX_NUM];    // attrs in Select clause // add szj [select aggregate support]
   size_t    relation_num;           // Length of relations in Fro clause
   char *    relations[MAX_NUM];     // relations in From clause
   size_t    condition_num;          // Length of conditions in Where clause
   Condition conditions[MAX_NUM];    // conditions in Where clause
+  size_t    joinnode_num;            
+  JoinNode* joinnodes[MAX_NUM];
+  bool      aggr_flag;              // add szj [select aggregate support]
 } Selects;
 
 // struct of insert
@@ -75,6 +111,9 @@ typedef struct {
   char *relation_name;    // Relation to insert into
   size_t value_num;       // Length of values
   Value values[MAX_NUM];  // values to insert
+  // add szj [insert multi values]20211029:b
+  size_t record_num;      // use for multi insert values
+  // add:e
 } Inserts;
 
 // struct of delete
@@ -168,17 +207,23 @@ enum SqlCommandFlag {
   SCF_EXIT
 };
 // struct of flag and sql_struct
+//mod zjx[select]b:20211020
 typedef struct Query {
   enum SqlCommandFlag flag;
   union Queries sstr;
+  struct Query* next_sql; //多条sql语句链接指针
 } Query;
+//e:20211020
 
 #ifdef __cplusplus
 extern "C" {
 #endif  // __cplusplus
 
 void relation_attr_init(RelAttr *relation_attr, const char *relation_name, const char *attribute_name);
+void relation_col_attr_init(ColAttr *relation_attr, const char *relation_name, const char *attribute_name, const char *aggregate_name); // add szj [select aggregate support]20211106:b
 void relation_attr_destroy(RelAttr *relation_attr);
+void relation_col_attr_destroy(ColAttr *relation_attr);  // add szj [select aggregate support]20211106
+bool judge_one(int v); // add szj [select aggregate support]20211106
 
 void value_init_integer(Value *value, int v);
 void value_init_float(Value *value, float v);
@@ -193,12 +238,16 @@ void attr_info_init(AttrInfo *attr_info, const char *name, AttrType type, size_t
 void attr_info_destroy(AttrInfo *attr_info);
 
 void selects_init(Selects *selects, ...);
-void selects_append_attribute(Selects *selects, RelAttr *rel_attr);
+void selects_append_attribute(Selects *selects, ColAttr *rel_attr); // add szj [select aggregate support]20211106
 void selects_append_relation(Selects *selects, const char *relation_name);
 void selects_append_conditions(Selects *selects, Condition conditions[], size_t condition_num);
+void selects_append_joinnode(Selects *selects, const char *relation_name, int judge); //add zjx[select]b:20211028
 void selects_destroy(Selects *selects);
 
-void inserts_init(Inserts *inserts, const char *relation_name, Value values[], size_t value_num);
+// void inserts_init(Inserts *inserts, const char *relation_name, Value values[], size_t value_num);
+// add szj [insert multi values]20211029:b
+void inserts_init(Inserts *inserts, const char *relation_name, Value values[], size_t value_num, size_t record_num);
+// add:e
 void inserts_destroy(Inserts *inserts);
 
 void deletes_init_relation(Deletes *deletes, const char *relation_name);

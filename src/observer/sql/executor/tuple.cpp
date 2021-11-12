@@ -44,6 +44,7 @@ void Tuple::add(TupleValue *value) {
 void Tuple::add(const std::shared_ptr<TupleValue> &other) {
   values_.emplace_back(other);
 }
+
 void Tuple::add(int value) {
   add(new IntValue(value));
 }
@@ -54,6 +55,12 @@ void Tuple::add(float value) {
 
 void Tuple::add(const char *s, int len) {
   add(new StringValue(s, len));
+}
+
+void Tuple::add(const Tuple &tuple) { //add zjx[select]b:20211028
+  for(int i = 0; i < tuple.size(); i++){
+	values_.emplace_back(std::move(tuple.get_pointer(i)));
+   }
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -91,6 +98,7 @@ void TupleSchema::add_if_not_exists(AttrType type, const char *table_name, const
 }
 
 void TupleSchema::append(const TupleSchema &other) {
+printf("%d%d\n",fields_.size(),other.fields_.size());
   fields_.reserve(fields_.size() + other.fields_.size());
   for (const auto &field: other.fields_) {
     fields_.emplace_back(field);
@@ -98,13 +106,17 @@ void TupleSchema::append(const TupleSchema &other) {
 }
 
 int TupleSchema::index_of_field(const char *table_name, const char *field_name) const {
+  LOG_INFO("Get into index_of_field!!!");
   const int size = fields_.size();
   for (int i = 0; i < size; i++) {
+    LOG_INFO("Looping in index_of_field!!!");
     const TupleField &field = fields_[i];
     if (0 == strcmp(field.table_name(), table_name) && 0 == strcmp(field.field_name(), field_name)) {
+      LOG_INFO("strike in filed!!!!!!");
       return i;
     }
   }
+  LOG_INFO("Out of index_of_field!!!");
   return -1;
 }
 
@@ -154,6 +166,10 @@ TupleSet &TupleSet::operator=(TupleSet &&other) {
 }
 
 void TupleSet::add(Tuple &&tuple) {
+  tuples_.emplace_back(std::move(tuple));
+}
+
+void TupleSet::add(const Tuple &tuple) { //add zjx[select]b:20211028
   tuples_.emplace_back(std::move(tuple));
 }
 
@@ -242,5 +258,3 @@ void TupleRecordConverter::add_record(const char *record) {
 
   tuple_set_.add(std::move(tuple));
 }
-
-

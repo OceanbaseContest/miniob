@@ -97,7 +97,9 @@ RC RecordPageHandler::init(DiskBufferPool &buffer_pool, int file_id, PageNum pag
 }
 
 RC RecordPageHandler::init_empty_page(DiskBufferPool &buffer_pool, int file_id, PageNum page_num, int record_size) {
+  LOG_INFO("IN INIT");
   RC ret = init(buffer_pool, file_id, page_num);
+  LOG_INFO("OUT INIT");
   if (ret != RC::SUCCESS) {
     LOG_ERROR("Failed to init empty page file_id:page_num:record_size %d:%d:%d."
               , file_id, page_num, record_size);
@@ -164,10 +166,29 @@ RC RecordPageHandler::insert_record(const char *data, RID *rid) {
     // hard to rollback
   }
 
+/*
+//add bzb [LRU+LFU] 20211031:b
+  rc = disk_buffer_pool_->increase_LFU_count(&page_handle_);
+  if (rc != RC::SUCCESS) {
+    LOG_ERROR("Failed to increase LFU_count. rc =%d:%s", rc, strrc(rc));
+  }
+//20211031:e
+*/
+
   if (rid) {
     rid->page_num = get_page_num();
     rid->slot_num = index;
   }
+
+//add bzb [LRU+LFU] 20211031:b
+  LOG_INFO("unpin_page1 = %d", page_handle_.frame->pin_count);
+  rc = disk_buffer_pool_->unpin_page(&page_handle_);
+  if (rc != RC::SUCCESS) {
+    LOG_ERROR("Failed to unpin page. rc =%d:%s", rc, strrc(rc));
+    // hard to rollback
+  }
+  LOG_INFO("unpin_page2 = %d", page_handle_.frame->pin_count);
+//20211031:e
 
   LOG_TRACE("Insert record. rid page_num=%d, slot num=%d", get_page_num(), index);
   return RC::SUCCESS;
@@ -387,9 +408,10 @@ RC RecordFileHandler::insert_record(const char *data, int record_size, RID *rid)
       break;
     }
   }
-
+  LOG_INFO("page_found = %d", page_found);
   // 找不到就分配一个新的页面
   if (!page_found) {
+    //LOG_INFO("page_found = %d", page_found);
     BPPageHandle page_handle;
     if ((ret = disk_buffer_pool_->allocate_page(file_id_, &page_handle)) != RC::SUCCESS) {
       LOG_ERROR("Failed to allocate page while inserting record. file_it:%d, ret:%d",
@@ -398,8 +420,11 @@ RC RecordFileHandler::insert_record(const char *data, int record_size, RID *rid)
     }
 
     current_page_num = page_handle.frame->page.page_num;
+    LOG_INFO("current_page_num = %d", current_page_num);
     record_page_handler_.deinit();
+    LOG_INFO("IN INIT");
     ret = record_page_handler_.init_empty_page(*disk_buffer_pool_, file_id_, current_page_num, record_size);
+    LOG_INFO("OUT INIT");
     if (ret != RC::SUCCESS) {
       LOG_ERROR("Failed to init empty page. file_id:%d, ret:%d", file_id_, ret);
       if (RC::SUCCESS != disk_buffer_pool_->unpin_page(&page_handle)) {

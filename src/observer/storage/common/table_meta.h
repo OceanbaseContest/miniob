@@ -56,6 +56,9 @@ public:
   int  serialize(std::ostream &os) const override;
   int  deserialize(std::istream &is) override;
   int  get_serial_size() const override;
+  //add bzb [drop table] 20211022:b
+  void drop_all_index_file(std::string base_dir, std::string tb_name);
+  //20211022:e
   void to_string(std::string &output) const override;
   void desc(std::ostream &os) const;
 

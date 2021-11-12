@@ -12,10 +12,14 @@
 
 typedef struct ParserContext {
   Query * ssql;
+  Query * cursql;
   size_t select_length;
   size_t condition_length;
   size_t from_length;
   size_t value_length;
+  // add szj [insert multi values]20211029:b
+  size_t record_length;
+  // add:e
   Value values[MAX_NUM];
   Condition conditions[MAX_NUM];
   CompOp comp;
@@ -43,6 +47,9 @@ void yyerror(yyscan_t scanner, const char *str)
   context->from_length = 0;
   context->select_length = 0;
   context->value_length = 0;
+  // add szj [insert multi values]20211029:b
+  context->record_length = 0;
+  // add:e
   context->ssql->sstr.insertion.value_num = 0;
   printf("parse sql failed. error=%s", str);
 }
@@ -102,6 +109,7 @@ ParserContext *get_context(yyscan_t scanner)
         LE
         GE
         NE
+		ONE  // add szj [select aggregate support]20211106
 
 %union {
   struct _Attr *attr;
@@ -113,6 +121,7 @@ ParserContext *get_context(yyscan_t scanner)
 	char *position;
 }
 
+// add:e
 %token <number> NUMBER
 %token <floats> FLOAT 
 %token <string> ID
@@ -278,8 +287,10 @@ ID_get:
 	;
 
 	
+// add szj [insert multi values]20211029:b
+// 改写insert语法树分支
 insert:				/*insert   语句的语法解析树*/
-    INSERT INTO ID VALUES LBRACE value value_list RBRACE SEMICOLON 
+	INSERT INTO ID VALUES insert_vals_list SEMICOLON 
 		{
 			// CONTEXT->values[CONTEXT->value_length++] = *$6;
 
@@ -289,11 +300,27 @@ insert:				/*insert   语句的语法解析树*/
 			// for(i = 0; i < CONTEXT->value_length; i++){
 			// 	CONTEXT->ssql->sstr.insertion.values[i] = CONTEXT->values[i];
       // }
-			inserts_init(&CONTEXT->ssql->sstr.insertion, $3, CONTEXT->values, CONTEXT->value_length);
+	  		// 改写inserts_init函数调用接口
+			inserts_init(&CONTEXT->ssql->sstr.insertion, $3, CONTEXT->values, CONTEXT->value_length, CONTEXT->record_length);
 
       //临时变量清零
       CONTEXT->value_length=0;
-    }
+	  // add szj [insert multi values]20211029:b
+	  CONTEXT->record_length=0;
+	  // add:e
+    	}
+	;
+
+insert_vals_list:
+	LBRACE value value_list RBRACE {
+		CONTEXT->record_length++;
+		}
+	| LBRACE value value_list RBRACE COMMA insert_vals_list {
+		// 添加多值insert语法树分支
+		CONTEXT->record_length++;
+	  	}
+	;
+// add:e
 
 value_list:
     /* empty */
@@ -339,6 +366,8 @@ select:				/*  select 语句的语法解析树*/
 		{
 			// CONTEXT->ssql->sstr.selection.relations[CONTEXT->from_length++]=$4;
 			selects_append_relation(&CONTEXT->ssql->sstr.selection, $4);
+			// 为首个表格进行joinnode的填充
+			selects_append_joinnode(&CONTEXT->ssql->sstr.selection, $4, 0);
 
 			selects_append_conditions(&CONTEXT->ssql->sstr.selection, CONTEXT->conditions, CONTEXT->condition_length);
 
@@ -351,30 +380,57 @@ select:				/*  select 语句的语法解析树*/
 			CONTEXT->select_length=0;
 			CONTEXT->value_length = 0;
 	}
+	//add zjx[select]b:20211021
+	//|select UNION select
+	//	{
+	//		selects_append_selects
+	//}
+	//e:20211021
 	;
 
 select_attr:
     STAR {  
-			RelAttr attr;
-			relation_attr_init(&attr, NULL, "*");
+			ColAttr attr;
+			// 重新定义一个init函数，初始化聚集函数信息
+			relation_col_attr_init(&attr, NULL, "*", NULL);
+			// 聚集函数内的列信息也是添加到,操作还是填入数组不变
 			selects_append_attribute(&CONTEXT->ssql->sstr.selection, &attr);
+			// RelAttr attr;
+			// relation_attr_init(&attr, NULL, "*");
+			// selects_append_attribute(&CONTEXT->ssql->sstr.selection, &attr);
 		}
+	// 添加function分支
     | ID attr_list {
-			RelAttr attr;
-			relation_attr_init(&attr, NULL, $1);
+			ColAttr attr;
+			// 重新定义一个init函数，初始化聚集函数信息
+			relation_col_attr_init(&attr, NULL, $1, NULL);
+			//RelAttr attr;
+			//relation_attr_init(&attr, NULL, $1);
 			selects_append_attribute(&CONTEXT->ssql->sstr.selection, &attr);
 		}
   	| ID DOT ID attr_list {
-			RelAttr attr;
-			relation_attr_init(&attr, $1, $3);
+		  	ColAttr attr;
+			// 重新定义一个init函数，初始化聚集函数信息
+			relation_col_attr_init(&attr, $1, $3, NULL);
+			// RelAttr attr;
+			// relation_attr_init(&attr, $1, $3);
 			selects_append_attribute(&CONTEXT->ssql->sstr.selection, &attr);
 		}
-    ;
+	// add szj [select aggregate support]20211106:b
+	// add aggregate branch
+	 | AGGR_FUNC {
+
+	 }
+	// add:e
+     ;
 attr_list:
     /* empty */
     | COMMA ID attr_list {
-			RelAttr attr;
-			relation_attr_init(&attr, NULL, $2);
+			ColAttr attr;
+			// 重新定义一个init函数，初始化聚集函数信息
+			relation_col_attr_init(&attr, NULL, $2, NULL);
+			// RelAttr attr;
+			// relation_attr_init(&attr, NULL, $2);
 			selects_append_attribute(&CONTEXT->ssql->sstr.selection, &attr);
      	  // CONTEXT->ssql->sstr.selection.attributes[CONTEXT->select_length].relation_name = NULL;
         // CONTEXT->ssql->sstr.selection.attributes[CONTEXT->select_length++].attribute_name=$2;
@@ -388,11 +444,125 @@ attr_list:
   	  }
   	;
 
+// add szj [select aggregate support]20211106:b
+
+AGGR_FUNC:
+	ID LBRACE NUMBER RBRACE AGGR_FUNC_LIST {
+		// 进入函数判断聚集类型
+			// 重新定义一个包含RelAttr的结构体！！！
+			if (judge_one($3)) {
+				ColAttr attr;
+				// 重新定义一个init函数，初始化聚集函数信息
+				relation_col_attr_init(&attr, NULL, "1", $1);
+				// 聚集函数内的列信息也是添加到,操作还是填入数组不变
+				selects_append_attribute(&CONTEXT->ssql->sstr.selection, &attr);
+			}
+	}
+	| ID LBRACE STAR RBRACE AGGR_FUNC_LIST {
+		// 进入函数判断聚集类型
+			// 重新定义一个包含RelAttr的结构体！！！
+			ColAttr attr;
+			// 重新定义一个init函数，初始化聚集函数信息
+			relation_col_attr_init(&attr, NULL, "*", $1);
+			// 聚集函数内的列信息也是添加到,操作还是填入数组不变
+			selects_append_attribute(&CONTEXT->ssql->sstr.selection, &attr);
+	}
+	| ID LBRACE ID RBRACE AGGR_FUNC_LIST{
+			// 进入函数判断聚集类型
+			// 重新定义一个包含RelAttr的结构体！！！
+			ColAttr attr;
+			// 重新定义一个init函数，初始化聚集函数信息
+			relation_col_attr_init(&attr, NULL, $3, $1);
+			// 聚集函数内的列信息也是添加到,操作还是填入数组不变
+			selects_append_attribute(&CONTEXT->ssql->sstr.selection, &attr);
+		}
+	| ID LBRACE ID DOT ID RBRACE AGGR_FUNC_LIST{
+			RelAttr attr;
+			relation_col_attr_init(&attr, $3, $5, $1);
+			// 聚集函数内的列信息也是添加到
+			selects_append_attribute(&CONTEXT->ssql->sstr.selection, &attr);
+		}
+	| ID LBRACE ONE RBRACE {
+		// 为count(1)填充select结构体
+	} 
+	;
+
+
+AGGR_FUNC_LIST:
+    /* empty */
+	| COMMA ID LBRACE NUMBER RBRACE AGGR_FUNC_LIST {
+		// 进入函数判断聚集类型
+			// 重新定义一个包含RelAttr的结构体！！！
+			if (judge_one($4)) {
+				ColAttr attr;
+				// 重新定义一个init函数，初始化聚集函数信息
+				relation_col_attr_init(&attr, NULL, "1", $2);
+				// 聚集函数内的列信息也是添加到,操作还是填入数组不变
+				selects_append_attribute(&CONTEXT->ssql->sstr.selection, &attr);
+			}
+	}
+    | COMMA ID LBRACE ID RBRACE AGGR_FUNC_LIST{
+			// 进入函数判断聚集类型
+			// 重新定义一个包含RelAttr的结构体！！！
+			ColAttr attr;
+			// 重新定义一个init函数，初始化聚集函数信息
+			relation_col_attr_init(&attr, NULL, $4, $2);
+			// 聚集函数内的列信息也是添加到,操作还是填入数组不变
+			selects_append_attribute(&CONTEXT->ssql->sstr.selection, &attr);
+      }
+	| COMMA ID LBRACE STAR RBRACE AGGR_FUNC_LIST{
+			// 进入函数判断聚集类型
+			// 重新定义一个包含RelAttr的结构体！！！
+			ColAttr attr;
+			// 重新定义一个init函数，初始化聚集函数信息
+			relation_col_attr_init(&attr, NULL, "*", $2);
+			// 聚集函数内的列信息也是添加到,操作还是填入数组不变
+			selects_append_attribute(&CONTEXT->ssql->sstr.selection, &attr);
+      }
+    | COMMA ID LBRACE ID DOT ID RBRACE AGGR_FUNC_LIST{
+			RelAttr attr;
+			relation_col_attr_init(&attr, $4, $6, $2);
+			// 聚集函数内的列信息也是添加到
+			selects_append_attribute(&CONTEXT->ssql->sstr.selection, &attr);
+  	  }
+  	;
+
+
+/*
+EXPR:
+	ID {
+			RelAttr attr;
+			relation_attr_init(&attr, $2, $4);
+			// 聚集函数内的列信息也是添加到
+			selects_append_attribute(&CONTEXT->ssql->sstr.selection, &attr);
+		}
+	| ID DOT ID {
+			RelAttr attr;
+			relation_attr_init(&attr, $2, $4);
+			selects_append_attribute(&CONTEXT->ssql->sstr.selection, &attr);
+		}
+*/
+// add:e
+
 rel_list:
     /* empty */
     | COMMA ID rel_list {	
 				selects_append_relation(&CONTEXT->ssql->sstr.selection, $2);
+				selects_append_joinnode(&CONTEXT->ssql->sstr.selection, $2, 0);
 		  }
+	//add zjx[select]b:20211020
+	//| join_type JOIN ID ON ID DOT ID EQ ID DOT ID rel_list{
+	//			selects_set_join_flag();
+	//			init_join_node($5, $9, $7, $11);
+	// selects_append_joinnode(&CONTEXT->ssql->sstr.selection, $2, 1);
+	//			node->set_right_node();
+	//
+	//	}
+	//| join_type JOIN ID ON ID DOT ID EQ ID DOT ID rel_list{
+	//			selects_set_join_flag();
+	//			init_join_node
+	//	}
+	//e:20211020
     ;
 where:
     /* empty */ 
@@ -580,6 +750,8 @@ int sql_parse(const char *s, Query *sqls){
 	yyscan_t scanner;
 	yylex_init_extra(&context, &scanner);
 	context.ssql = sqls;
+	context.cursql = sqls; //add zjx[select]b:20211024
+	printf("into");
 	scan_string(s, scanner);
 	int result = yyparse(scanner);
 	yylex_destroy(scanner);

@@ -164,7 +164,10 @@ void DefaultStorageStage::handle_event(StageEvent *event) {
   case SCF_INSERT: { // insert into
       const Inserts &inserts = sql->sstr.insertion;
       const char *table_name = inserts.relation_name;
-      rc = handler_->insert_record(current_trx, current_db, table_name, inserts.value_num, inserts.values);
+      // add szj [insert multi values]20211029:b
+      LOG_INFO("Watch Out the multi insert sql：record num is %d!!!!!!",inserts.record_num);
+      rc = handler_->insert_record(current_trx, current_db, table_name, inserts.value_num, inserts.values, inserts.record_num);
+      // add:e
       snprintf(response, sizeof(response), "%s\n", rc == RC::SUCCESS ? "SUCCESS" : "FAILURE");
     }
     break;
@@ -193,6 +196,14 @@ void DefaultStorageStage::handle_event(StageEvent *event) {
       snprintf(response, sizeof(response), "%s\n", rc == RC::SUCCESS ? "SUCCESS" : "FAILURE");
     }
     break;
+  //add bzb [drop table] 20211022:b
+  case SCF_DROP_TABLE: { // drop table
+      const DropTable &drop_table = sql->sstr.drop_table;
+      rc = handler_->drop_table(current_db, drop_table.relation_name);
+      snprintf(response, sizeof(response), "%s\n", rc == RC::SUCCESS ? "SUCCESS" : "FAILURE");
+    }
+    break;
+  //20211022:e
   case SCF_CREATE_INDEX: {
       const CreateIndex &create_index = sql->sstr.create_index;
       rc = handler_->create_index(current_trx, current_db, create_index.relation_name, 
@@ -344,7 +355,9 @@ RC insert_record_from_file(Table *table, std::vector<std::string> &file_values,
   }
 
   if (RC::SUCCESS == rc) {
-    rc = table->insert_record(nullptr, field_num, record_values.data());
+    // add szj [insert multi values]20211029:b
+    rc = table->insert_record(nullptr, field_num, record_values.data(), 1);
+    // add:e
     if (rc != RC::SUCCESS) {
       errmsg << "insert failed.";
     }
