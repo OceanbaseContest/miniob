@@ -135,13 +135,35 @@ void TupleSchema::print(std::ostream &os) const {
   for (std::vector<TupleField>::const_iterator iter = fields_.begin(), end = --fields_.end();
        iter != end; ++iter) {
     if (table_names.size() > 1) {
-      os << iter->table_name() << ".";
+      // add szj [select aggregate support]20211106
+      if (strlen(iter->field_name()) > 3) {
+        char tmp[4];
+        strncpy(tmp, iter->field_name(), 3);
+        LOG_INFO("here is third_tmp_str %s", tmp);
+        if (strcmp(tmp, "AVG") == 0 || strcmp(tmp, "MAX") == 0 || strcmp(tmp, "SUM") == 0 || strcmp(tmp, "COU") == 0) {
+        } else {
+          os << iter->table_name() << ".";
+        }
+      }
+      // add:e
+      // os << iter->table_name() << ".";
     }
     os << iter->field_name() << " | ";
   }
 
   if (table_names.size() > 1) {
-    os << fields_.back().table_name() << ".";
+    // add szj [select aggregate support]20211106
+    if (strlen(fields_.back().field_name()) > 3) {
+      char tmp[4];
+      strncpy(tmp, fields_.back().field_name(), 3);
+      LOG_INFO("here is third_tmp_str %s", tmp);
+      if (strcmp(tmp, "AVG") == 0 || strcmp(tmp, "MAX") == 0 || strcmp(tmp, "SUM") == 0 || strcmp(tmp, "COU") == 0) {
+      } else {
+        os << fields_.back().table_name() << ".";
+      }
+    }
+    // add:e 
+    // os << fields_.back().table_name() << ".";
   }
   os << fields_.back().field_name() << std::endl;
 }
