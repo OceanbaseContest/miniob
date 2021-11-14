@@ -73,7 +73,7 @@ typedef enum {
 } CompOp;
 
 //属性值类型
-typedef enum { UNDEFINED, CHARS, INTS, FLOATS } AttrType;
+typedef enum { UNDEFINED, CHARS, INTS, FLOATS, DATES} AttrType; //add zjx[date]b:20211026
 
 //属性值
 typedef struct _Value {
@@ -228,6 +228,7 @@ bool judge_one(int v); // add szj [select aggregate support]20211106
 void value_init_integer(Value *value, int v);
 void value_init_float(Value *value, float v);
 void value_init_string(Value *value, const char *v);
+void value_init_date(Value *value, const char *v); //add zjx[date]b:20211102
 void value_destroy(Value *value);
 
 void condition_init(Condition *condition, CompOp comp, int left_is_attr, RelAttr *left_attr, Value *left_value,
@@ -282,6 +283,13 @@ void query_init(Query *query);
 Query *query_create();  // create and init
 void query_reset(Query *query);
 void query_destroy(Query *query);  // reset and delete
+
+//add zjx[dates&check]b:20211027
+bool check_date(char * datedata); 
+bool is_leap_year(int year);
+void refactor_date(char* datedata);
+char * inner_substr(const char *s,int n1,int n2);
+//e:20211027
 
 #ifdef __cplusplus
 }

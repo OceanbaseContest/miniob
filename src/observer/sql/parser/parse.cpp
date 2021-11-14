@@ -17,6 +17,7 @@ See the Mulan PSL v2 for more details. */
 #include "rc.h"
 #include "common/log/log.h"
 #include <string.h> // add szj [select aggregate support]20211106
+#include <vector> //add zjx[date]b:20211102
 
 RC parse(char *st, Query *sqln);
 
@@ -121,6 +122,12 @@ void value_init_string(Value *value, const char *v) {
   value->type = CHARS;
   value->data = strdup(v);
 }
+//add zjx[date]b:20211027
+void value_init_date(Value *value, const char *v) {
+  value->type = DATES;
+  value->data = strdup(v);
+}
+//e:20211027
 void value_destroy(Value *value) {
   value->type = UNDEFINED;
   free(value->data);
@@ -467,6 +474,90 @@ void query_destroy(Query *query) {
   query_reset(query);
   free(query);
 }
+
+//add zjx[date&check]b:20211027
+bool check_date(char * datedata)
+{
+  RC rc = RC::SUCCESS;
+  std::vector<int> pos;
+  char* pch = strchr(datedata,'-');
+  while(pch != NULL){
+    pos.push_back(pch-datedata);
+    pch = strchr(pch+1,'-');     
+  }
+  if(pos.size()!=2){return false;}
+
+  if(0 == pos[0] 
+    || pos[0] == pos[1]
+    || pos[1] == strlen(datedata)-1){return false;}
+  
+  int days_in_month[]= {0, 31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31};
+  
+  int year = atoi(inner_substr(datedata, 0, pos[0]-1));
+  int month = atoi(inner_substr(datedata, pos[0]+1, pos[1]-1));
+  if (year < 1 || year > 9999 ||
+    month < 1 || month > 12)
+  {
+    return false;
+  }
+  else
+  {
+    int mday = days_in_month[month];
+    if (1 == is_leap_year(year) && 2 == month)
+    {
+      mday += 1;
+    }
+    if (atoi(inner_substr(datedata, pos[1]+1, strlen(datedata)-1)) < 1 || atoi(inner_substr(datedata, pos[1]+1, strlen(datedata)-1)) > mday)
+    {
+      return false;
+    }
+  }
+  return true;
+}
+
+bool is_leap_year(int year){
+    if ((year & 3) == 0 && (year%100 || (year%400 == 0 && year)))
+    {
+        return true;
+    }
+    return false;
+}
+
+void refactor_date(char* datedata){
+  int pos[2];
+  int j =0;
+  char* pch = strchr(datedata,'-');
+  while(pch != NULL){
+    pos[j++] = (pch-datedata);
+    pch = strchr(pch+1,'-');
+  }
+
+  char new_datedata[10];
+  memset(new_datedata,'0',4-pos[0]);
+  memcpy(new_datedata+(4-pos[0]), datedata, pos[0]);
+  new_datedata[4] = '-';
+  memset(new_datedata+5,'0',3-pos[1]+pos[0]);
+  memcpy(new_datedata+8-pos[1]+pos[0], datedata+pos[0]+1, pos[1]-pos[0]-1);
+  new_datedata[7] = '-';
+  memset(new_datedata+8,'0',3- strlen(datedata) + pos[1]);
+  memcpy(new_datedata+11-strlen(datedata)+pos[1], datedata+pos[1]+1, strlen(datedata)-pos[1]-1);
+  new_datedata[10] = '\0';
+  memcpy(datedata, new_datedata, 10);
+}
+
+//获取子串
+char * inner_substr(const char *s,int n1,int n2)/*从s中提取下标为n1~n2的字符组成一个新字符串，然后返回这个新串的首地址*/
+{
+  char *sp = (char*)(malloc(sizeof(char) * (n2 - n1 + 2)));
+  int i, j = 0;
+  for (i = n1; i <= n2; i++) {
+    sp[j++] = s[i];
+  }
+  sp[j] = 0;
+  return sp;
+}
+//e:20211027
+
 #ifdef __cplusplus
 } // extern "C"
 #endif // __cplusplus

@@ -90,6 +90,7 @@ ParserContext *get_context(yyscan_t scanner)
         INT_T
         STRING_T
         FLOAT_T
+		DATE_T //add zjx[date]b:20211026
         HELP
         EXIT
         DOT //QUOTE
@@ -132,6 +133,7 @@ ParserContext *get_context(yyscan_t scanner)
 //非终结符
 
 %type <number> type;
+%type <number> date;//add zjx[date]b:20211027
 %type <condition1> condition;
 %type <value1> value;
 %type <number> number;
@@ -258,6 +260,13 @@ attr_def:
 			// CONTEXT->ssql->sstr.create_table.attributes[CONTEXT->value_length].length = $4;
 			CONTEXT->value_length++;
 		}
+	|ID_get date //add zjx[date]b:20211027
+		{
+			AttrInfo attribute;
+			attr_info_init(&attribute, CONTEXT->id, $2, 10);
+			create_table_append_attribute(&CONTEXT->ssql->sstr.create_table, &attribute);
+			CONTEXT->value_length++;
+		}
     |ID_get type
 		{
 			AttrInfo attribute;
@@ -273,6 +282,9 @@ attr_def:
 number:
 		NUMBER {$$ = $1;}
 		;
+date://add zjx[date]b:20211027
+	DATE_T { $$=DATES; }
+	;
 type:
 	INT_T { $$=INTS; }
        | STRING_T { $$=CHARS; }
