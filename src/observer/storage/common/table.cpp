@@ -327,10 +327,16 @@ RC Table::make_record(int value_num, const Value *values, std::vector<char *> &r
   for (int i = 0; i < value_num; i++) {
     const FieldMeta *field = table_meta_.field(i + normal_field_start_index);
     const Value &value = values[i];
+
+    //mod zjx[dates]b:20211031
     if (field->type() != value.type) {
-      LOG_ERROR("Invalid value type. field name=%s, type=%d, but given=%d",
+      if(field->type() == DATES && value.type == CHARS){
+        continue;
+      }else{
+        LOG_ERROR("Invalid value type. field name=%s, type=%d, but given=%d",
         field->name(), field->type(), value.type);
-      return RC::SCHEMA_FIELD_TYPE_MISMATCH;
+        return RC::SCHEMA_FIELD_TYPE_MISMATCH;
+      }    
     }
   }
   LOG_INFO("Start to Copy Record String!!!!!!");
@@ -344,7 +350,12 @@ RC Table::make_record(int value_num, const Value *values, std::vector<char *> &r
     LOG_INFO("%d value is %s?????", sum, value.data);
     std::cout << value.data << std::endl;
     LOG_INFO("!!!!!!!!!!! %d", *((int*)value.data));
-    
+    //mod zjx[dates]b:20211031
+    if (field->type() == DATES && value.type == CHARS){
+      if (!check_date((char*)value.data) ) return RC::SCHEMA_FIELD_TYPE_MISMATCH;
+      refactor_date((char*)value.data);
+    }
+    //e:20211031
     memcpy(record + field->offset(), value.data, field->len());
   }
   LOG_INFO("Succeed to Copy Record String!!!!!!");

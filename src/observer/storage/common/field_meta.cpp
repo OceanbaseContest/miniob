@@ -27,11 +27,12 @@ const char *ATTR_TYPE_NAME[] = {
   "undefined",
   "chars",
   "ints",
-  "floats"
+  "floats",
+  "dates"//add zjx[date]b:2021110
 };
 
 const char *attr_type_to_string(AttrType type) {
-  if (type >= UNDEFINED && type <= FLOATS) {
+  if (type >= UNDEFINED && type <= DATES) { //add zjx[date]b:20211102
     return ATTR_TYPE_NAME[type];
   }
   return "unknown";

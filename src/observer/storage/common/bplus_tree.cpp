@@ -180,6 +180,7 @@ int CompareKey(const char *pdata, const char *pkey,AttrType attr_type,int attr_l
       return float_compare(f1, f2);
     }
       break;
+    case DATES://add zjx[date]b:20211027
     case CHARS: {
       s1 = pdata;
       s2 = pkey;
@@ -1818,6 +1819,7 @@ bool BplusTreeScanner::satisfy_condition(const char *pkey) {
       f1=*(float *)pkey;
       f2=*(float *)value_;
       break;
+    case DATES://add zjx[date]b:20211027
     case CHARS:
       s1=pkey;
       s2=value_;
@@ -1838,6 +1840,7 @@ bool BplusTreeScanner::satisfy_condition(const char *pkey) {
         case FLOATS:
           flag= 0 == float_compare(f1, f2);
           break;
+        case DATES://add zjx[date]b:20211027
         case CHARS:
           flag=(strncmp(s1,s2,attr_length)==0);
           break;
@@ -1853,6 +1856,7 @@ bool BplusTreeScanner::satisfy_condition(const char *pkey) {
         case FLOATS:
           flag=(f1<f2);
           break;
+        case DATES://add zjx[date]b:20211027
         case CHARS:
           flag=(strncmp(s1,s2,attr_length)<0);
           break;
@@ -1868,6 +1872,7 @@ bool BplusTreeScanner::satisfy_condition(const char *pkey) {
         case FLOATS:
           flag=(f1>f2);
           break;
+        case DATES://add zjx[date]b:20211027
         case CHARS:
           flag=(strncmp(s1,s2,attr_length)>0);
           break;
@@ -1883,6 +1888,7 @@ bool BplusTreeScanner::satisfy_condition(const char *pkey) {
         case FLOATS:
           flag=(f1<=f2);
           break;
+        case DATES://add zjx[date]b:20211027
         case CHARS:
           flag=(strncmp(s1,s2,attr_length)<=0);
           break;
@@ -1898,6 +1904,7 @@ bool BplusTreeScanner::satisfy_condition(const char *pkey) {
         case FLOATS:
           flag=(f1>=f2);
           break;
+        case DATES://add zjx[date]b:20211027
         case CHARS:
           flag=(strncmp(s1,s2,attr_length)>=0);
           break;
@@ -1913,6 +1920,7 @@ bool BplusTreeScanner::satisfy_condition(const char *pkey) {
         case FLOATS:
           flag= 0 != float_compare(f1, f2);
           break;
+        case DATES://add zjx[date]b:20211027
         case CHARS:
           flag=(strncmp(s1,s2,attr_length)!=0);
           break;
