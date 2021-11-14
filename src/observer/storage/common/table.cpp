@@ -385,13 +385,21 @@ RC Table::make_record(int value_num, const Value *values, std::vector<char *> &r
     for (int i = 0; i < single_value_num; i++) {
       const FieldMeta *field = table_meta_.field(i + normal_field_start_index);
       const Value &value = values[index++];
+      LOG_INFO("field type %d", field->type());
+      LOG_INFO("value type %d", value.type);
+      //mod zjx[dates]b:20211031
       if (field->type() != value.type) {
-        LOG_ERROR("Invalid value type. field name=%s, type=%d, but given=%d",
+        if(field->type() == DATES && value.type == CHARS){
+          continue;
+        }else{
+          LOG_ERROR("Invalid value type. field name=%s, type=%d, but given=%d",
           field->name(), field->type(), value.type);
-        return RC::SCHEMA_FIELD_TYPE_MISMATCH;
+          return RC::SCHEMA_FIELD_TYPE_MISMATCH;
+        }    
       }
     }
   }
+
   LOG_INFO("Pass attr type check Woohuu!!!!!!");
   // 复制所有字段的值
   int record_size = table_meta_.record_size();
@@ -401,6 +409,12 @@ RC Table::make_record(int value_num, const Value *values, std::vector<char *> &r
     for (int i = 0; i < single_value_num; i++) {
       const FieldMeta *field = table_meta_.field(i + normal_field_start_index);
       const Value &value = values[index2++];
+      //mod zjx[dates]b:20211031
+      if (field->type() == DATES && value.type == CHARS){
+        if (!check_date((char*)value.data) ) return RC::SCHEMA_FIELD_TYPE_MISMATCH;
+        refactor_date((char*)value.data);
+      }
+      //e:20211031
       memcpy(record + field->offset(), value.data, field->len());
     }
     LOG_INFO("Combine the whole tuple row!!!!!!");
