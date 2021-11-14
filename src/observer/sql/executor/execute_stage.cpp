@@ -768,6 +768,9 @@ RC ExecuteStage::do_aggregate( Selects selects, const char* db, TupleSet* &restu
               } else if (field_meta->type() == CHARS) {
                 std::string sum = "0";
                 tmp_tuple.add(sum.c_str(), strlen(sum.c_str()));
+              } else if (field_meta->type() == DATES) {
+                std::string sum = "0";
+                tmp_tuple.add(sum.c_str(), strlen(sum.c_str()));
               } else {
                 // 为UNDEFINE，记得给校验信息
               }
@@ -795,6 +798,18 @@ RC ExecuteStage::do_aggregate( Selects selects, const char* db, TupleSet* &restu
                 }
                 tmp_tuple.add(max_num);
               } else if (field_meta->type() == CHARS) {
+                // 对字符串进行逐位比较
+                std::string max_str = "0";
+                for (const Tuple &item : restuple->tuples()) {
+                  // const std::vector<std::shared_ptr<TupleValue>> &values = item.values();
+                  // 根据field_meta->type()进行不同类型数据的获取写get（）
+                  StringValue* tmp = (StringValue*)const_cast<TupleValue*>(&(item.get(tmp_pos)));
+                  std::string tmp_str = tmp->get();
+
+                  max_str = strcmp(max_str.c_str(), tmp_str.c_str()) < 0 ? tmp_str : max_str;
+                }
+                tmp_tuple.add(max_str.c_str(), strlen(max_str.c_str()));
+              } else if (field_meta->type() == DATES) {
                 // 对字符串进行逐位比较
                 std::string max_str = "0";
                 for (const Tuple &item : restuple->tuples()) {
@@ -844,6 +859,9 @@ RC ExecuteStage::do_aggregate( Selects selects, const char* db, TupleSet* &restu
                 }
                 tmp_tuple.add(sum / count);
               } else if (field_meta->type() == CHARS) {
+                std::string sum = "0";
+                tmp_tuple.add(sum.c_str(), strlen(sum.c_str()));
+              } else if (field_meta->type() == DATES) {
                 std::string sum = "0";
                 tmp_tuple.add(sum.c_str(), strlen(sum.c_str()));
               } else {
@@ -930,6 +948,9 @@ RC ExecuteStage::do_aggregate( Selects selects, const char* db, TupleSet* &restu
               } else if (field_meta->type() == CHARS) {
                 std::string sum = "0";
                 tmp_tuple.add(sum.c_str(), strlen(sum.c_str()));
+              } else if (field_meta->type() == DATES) {
+                std::string sum = "0";
+                tmp_tuple.add(sum.c_str(), strlen(sum.c_str()));
               } else {
                 // 为UNDEFINE，记得给校验信息
               }
@@ -957,6 +978,18 @@ RC ExecuteStage::do_aggregate( Selects selects, const char* db, TupleSet* &restu
                 }
                 tmp_tuple.add(max_num);
               } else if (field_meta->type() == CHARS) {
+                // 对字符串进行逐位比较
+                std::string max_str = "0";
+                for (const Tuple &item : restuple->tuples()) {
+                  // const std::vector<std::shared_ptr<TupleValue>> &values = item.values();
+                  // 根据field_meta->type()进行不同类型数据的获取写get（）
+                  StringValue* tmp = (StringValue*)const_cast<TupleValue*>(&(item.get(tmp_pos)));
+                  std::string tmp_str = tmp->get();
+
+                  max_str = strcmp(max_str.c_str(), tmp_str.c_str()) < 0 ? tmp_str : max_str;
+                }
+                tmp_tuple.add(max_str.c_str(), strlen(max_str.c_str()));
+              } else if (field_meta->type() == DATES) {
                 // 对字符串进行逐位比较
                 std::string max_str = "0";
                 for (const Tuple &item : restuple->tuples()) {
@@ -1006,6 +1039,9 @@ RC ExecuteStage::do_aggregate( Selects selects, const char* db, TupleSet* &restu
                 }
                 tmp_tuple.add(sum / count);
               } else if (field_meta->type() == CHARS) {
+                std::string sum = "0";
+                tmp_tuple.add(sum.c_str(), strlen(sum.c_str()));
+              } else if (field_meta->type() == DATES) {
                 std::string sum = "0";
                 tmp_tuple.add(sum.c_str(), strlen(sum.c_str()));
               } else {
