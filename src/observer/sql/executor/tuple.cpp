@@ -267,6 +267,7 @@ void TupleRecordConverter::add_record(const char *record) {
         tuple.add(value);
       }
         break;
+      case DATES: //add zjx[date]b:20211027
       case CHARS: {
         const char *s = record + field_meta->offset();  // 现在当做Cstring来处理
         tuple.add(s, strlen(s));
