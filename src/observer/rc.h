@@ -357,6 +357,10 @@ enum RC {
   //add zjx[select]b:20211022
   JOINNODE_ERROR = (EXECUTE |(RCSelect::JOINNODE << 8)),
   //e:20211022
+
+  //add zjx[order by]b:20211103
+  CONDITION_ERROR = (EXECUTE |(RCSchema::FIELD_NAME_ILLEGAL << 8)),
+  //e:20211103
 };
 
 extern const char *strrc(RC rc);
