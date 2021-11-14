@@ -136,8 +136,18 @@ void ExecuteStage::handle_request(common::StageEvent *event) {
         修改后，do_select仅承担运算功能，不再对数据进行打印输出，对总结果的打印输出将统一完成。
         */
        LOG_INFO("Get into select function!!!");
-      do_select(current_db, sql, sql_event->session_event());
+      RC rc = do_select(current_db, sql, sql_event->session_event()); //mod zjx[check]b:20211102
       //do_union(res_tuple_set, sql_event->session_event()->get_tupleset());
+      //add zjx[check]b:20211103
+      if(rc == RC::SCHEMA_TABLE_NOT_EXIST 
+            || rc == RC::SCHEMA_FIELD_MISSING
+            || rc == RC::RECORD_INVALID_KEY
+            || rc == RC::CONDITION_ERROR){
+        SessionEvent * session_event = exe_event->sql_event()->session_event();
+        session_event->set_response("FAILURE\n");
+        exe_event->done_immediate();
+        break;
+      }
       sql_event->session_event()->get_tupleset(*res_tuple_set);
       sql = sql->next_sql;
       sql_event = sql_event->next_sql_event();
@@ -251,7 +261,15 @@ RC ExecuteStage::do_select(const char *db, Query *sql, SessionEvent *session_eve
   RC rc = RC::SUCCESS;
   Session *session = session_event->get_client()->session;
   Trx *trx = session->current_trx();
-  const Selects &selects = sql->sstr.selection;
+  Selects &selects = sql->sstr.selection;
+
+  //检验condition
+  //add zjx[check]b:20211102
+  if( (rc = do_check_condition(selects, db)) != RC::SUCCESS) {
+    return rc;
+  }
+  //e:20211102
+
   // 把所有的表和只跟这张表关联的condition都拿出来，生成最底层的select 执行节点
   std::vector<SelectExeNode *> select_nodes;
   for (size_t i = 0; i < selects.relation_num; i++) {
@@ -315,6 +333,7 @@ RC ExecuteStage::do_select(const char *db, Query *sql, SessionEvent *session_eve
       return rc;
     }
   } 
+
   LOG_INFO("MotherFucker!!!the aggre_flag is %d", selects.aggr_flag);
   if (selects.aggr_flag == false) {
     if (select_nodes.size() > 1) {
@@ -488,21 +507,6 @@ RC ExecuteStage::do_product(JoinNode* &optimized_join_tree){
 }
 
 /**
- * @name: do_aggregate
- * @test: 
- * @msg: 聚合操作接口
- * @param {*}
- * @return {*}
- */
-/*
-RC ExecuteStage::do_aggregate(std::vector<TupleSet>* &tuple_sets){
-  RC rc = RC::SUCCESS;
-
-  return rc;
-}
-*/
-
-/**
  * @name: do_union
  * @test: 
  * @msg: union操作接口
@@ -544,6 +548,114 @@ RC ExecuteStage::load_tupleset(JoinNode* &node, std::map<std::string, TupleSet*>
 
   rc = load_tupleset(node->left_node_, name_tupleset_map);
   rc = load_tupleset(node->right_node_, name_tupleset_map);
+}
+
+//add zjx[check]b:20211114
+/**
+ * @name: do_check_condition
+ * @test: 
+ * @msg: 校验检查
+ * @param {Selects} &selects, {const char*} db
+ * @return {*}
+ */
+RC ExecuteStage::do_check_condition(Selects &selects, const char* db)  {
+  RC rc = RC::SUCCESS;
+
+  //select_attr check
+  if ((rc = do_select_attr_check_condition(selects, db)) != RC::SUCCESS) {
+    return rc;
+  }
+
+  //order_condition check
+
+  //group_by_condition check
+
+  return rc;
+}
+
+//add zjx[check]b:20211102
+/**
+ * @name: do_check_condition
+ * @test: 
+ * @msg: 检查condition中出现的表名和列名是否存在
+ * @param {Selects} &selects
+ * @param {char*} db
+ * @return {*}
+ */
+RC ExecuteStage::do_select_attr_check_condition(Selects &selects, const char* db){
+  RC rc = RC::SUCCESS;
+
+  for(size_t i = 0; i < selects.condition_num; i++){
+    Condition condition = selects.conditions[i];
+    if(condition.left_is_attr == 1) {
+      if((rc = check_and_fix(selects, db, selects.conditions[i].left_attr)) != RC::SUCCESS) {
+        return rc;
+      }
+    } 
+
+    if(condition.right_is_attr == 1) {
+      if((rc = check_and_fix(selects, db, selects.conditions[i].right_attr)) != RC::SUCCESS) {
+        return rc;
+      }
+    } 
+  }
+  return rc;
+}
+//e:20211102
+
+/**
+ * @name: 
+ * @test: test font
+ * @msg: 
+ * @param {Selects} &selects
+ * @param {char*} db
+ * @param {RelAttr} &attr
+ * @return {*}
+ */
+RC ExecuteStage::check_and_fix(Selects &selects, const char* db, RelAttr &attr) {//add zjx[select]b:20211114
+  RC rc =RC::SUCCESS;
+
+  if(attr.relation_name == nullptr) {
+    if ( attr.attribute_name == nullptr) {
+      return RC::CONDITION_ERROR;
+    }
+
+    int count = 0;
+    const char* table_name;
+    for( int i = 0; i < selects.relation_num && count < 2; i++) {
+      Table * table = DefaultHandler::get_default().find_table(db, selects.relations[i]);
+      if(table->table_meta().field(attr.attribute_name) != nullptr){
+        count++;
+        table_name = selects.relations[i];
+      }
+    }
+
+    if(count != 1){
+      return RC::CONDITION_ERROR;
+    } else {
+      attr.relation_name = const_cast<char*>(table_name);
+    }
+  } else if(attr.attribute_name == nullptr) {
+    return RC::SCHEMA_FIELD_MISSING;
+  } else {
+  bool flag = false;
+  for(int i = 0; i < selects.relation_num; i++){
+    if(((std::string)attr.relation_name).compare((std::string)selects.relations[i]) == 0){
+      flag = true;
+      break;
+    }
+  }
+
+  if ( flag ) {
+    return RC::SCHEMA_TABLE_NOT_EXIST;
+  } else {
+    Table * table = DefaultHandler::get_default().find_table(db, attr.relation_name);
+    if (nullptr == table->table_meta().field(attr.attribute_name)) {
+      LOG_WARN("No such field %s.%s", table->name(), attr.attribute_name);
+      return RC::SCHEMA_FIELD_MISSING;
+    }
+  } 
+}
   return rc;
 }
 
@@ -1118,7 +1230,6 @@ RC ExecuteStage::do_filter( Selects selects, const char* db, TupleSet* &restuple
       schema.add(field_meta->type(), attr.relAttr.relation_name, attr.relAttr.attribute_name);
     }
   }
-  printf("%d\n",schema.fields().size());
 
   final_tupleset->set_schema(schema);
 
@@ -1126,7 +1237,6 @@ RC ExecuteStage::do_filter( Selects selects, const char* db, TupleSet* &restuple
   int tmp_pos;
   for (int i = 0; i < schema.fields().size(); i++){
     tmp_pos = restuple->get_schema().index_of_field(schema.field(i).table_name(), schema.field(i).field_name());
-    printf("%d\n",tmp_pos);
     pos_record.push_back(tmp_pos);
   }
 
@@ -1135,7 +1245,6 @@ RC ExecuteStage::do_filter( Selects selects, const char* db, TupleSet* &restuple
     const std::vector<std::shared_ptr<TupleValue>> &values = item.values();
     for (std::vector<int>::iterator iter = pos_record.begin(); iter != pos_record.end(); iter++) {
       tmp_tuple.add(std::move(item.get_pointer(*iter)));
-	printf("hello");
     }
     final_tupleset->add(std::move(tmp_tuple));
   }
@@ -1192,7 +1301,6 @@ RC create_selection_executor(Trx *trx, const Selects &selects, const char *db, c
     }
   }
   TupleSchema::from_table(table, schema);
-  printf("%d\n",schema.fields().size());
 
   // 找出仅与此表相关的过滤条件, 或者都是值的过滤条件
   std::vector<DefaultConditionFilter *> condition_filters;
