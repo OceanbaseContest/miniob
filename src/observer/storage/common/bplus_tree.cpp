@@ -180,7 +180,12 @@ int CompareKey(const char *pdata, const char *pkey,AttrType attr_type,int attr_l
       return float_compare(f1, f2);
     }
       break;
-    case DATES://add zjx[date]b:20211027
+    case DATES: {
+      s1 = pdata;
+      s2 = pkey;
+      return strncmp(s1, s2, attr_length);
+    }
+      break;
     case CHARS: {
       s1 = pdata;
       s2 = pkey;
