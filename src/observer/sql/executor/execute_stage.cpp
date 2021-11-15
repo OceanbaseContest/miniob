@@ -647,7 +647,7 @@ RC ExecuteStage::check_and_fix(Selects &selects, const char* db, RelAttr &attr) 
     }
   }
 
-  if ( flag ) {
+  if ( !flag ) {
     return RC::SCHEMA_TABLE_NOT_EXIST;
   } else {
     Table * table = DefaultHandler::get_default().find_table(db, attr.relation_name);
