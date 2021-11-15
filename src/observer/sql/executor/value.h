@@ -44,12 +44,6 @@ public:
     return value_ - int_other.value_;
   }
 
-  // add szj [select aggregate support]20211106:b
-  int get() {
-    return value_;
-  }
-  // add:e
-  
 private:
   int value_;
 };
@@ -74,13 +68,6 @@ public:
     }
     return 0;
   }
-
-  // add szj [select aggregate support]20211106:b
-  int get() {
-    return value_;
-  }
-  // add:e
-
 private:
   float value_;
 };
@@ -100,13 +87,6 @@ public:
     const StringValue &string_other = (const StringValue &)other;
     return strcmp(value_.c_str(), string_other.value_.c_str());
   }
-
-  // add szj [select aggregate support]20211106:b
-  std::string get() {
-  return value_;
-  }
-  // add:e
-
 private:
   std::string value_;
 };

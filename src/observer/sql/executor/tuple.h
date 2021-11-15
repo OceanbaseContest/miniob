@@ -20,6 +20,7 @@ See the Mulan PSL v2 for more details. */
 
 #include "sql/parser/parse.h"
 #include "sql/executor/value.h"
+
 class Table;
 
 class Tuple {
@@ -38,7 +39,6 @@ public:
   void add(int value);
   void add(float value);
   void add(const char *s, int len);
-  void add(const Tuple &tuple); //add zjx[select]b:20211028
 
   const std::vector<std::shared_ptr<TupleValue>> &values() const {
     return values_;
@@ -129,7 +129,6 @@ public:
   const TupleSchema &get_schema() const;
 
   void add(Tuple && tuple);
-  void add(const Tuple &tuple); //add zjx[select]b:20211028
 
   void clear();
 
@@ -157,4 +156,5 @@ private:
   Table *table_;
   TupleSet &tuple_set_;
 };
+
 #endif //__OBSERVER_SQL_EXECUTOR_TUPLE_H_

@@ -102,15 +102,21 @@ public:
    * @param attrName
    * @return
    */
-  RC create_index(Trx *trx, const char *dbname, const char *relation_name, const char *index_name, const char *attribute_name);
-
+  //add bzb [unique index] 20211103:b
+  //add bzb [multi index] 20211107:b
+  RC create_index(Trx *trx, const char *dbname, const char *relation_name, const char *index_name, char* const* attribute_name, const int is_unique_index, size_t attribute_count);
+  //20211107:e
+  //20211103:e
   /**
    * 该函数用来删除名为indexName的索引。
    * 函数首先检查索引是否存在，如果不存在，则返回一个非零的错误码。否则，销毁该索引
    * @param index_name 
    * @return
    */
-  RC drop_index(Trx *trx, const char *dbname, const char *relation_name, const char *index_name);
+  //add bzb [drop index] 20211105:b
+  RC drop_index(Trx *trx, const char *dbname, const char *relation_name, const char *index_name, const char *attribute_name);
+  //RC drop_index(Trx *trx, const char *dbname, const char *relation_name, const char *index_name);
+  //20211105:e
 
   /**
    * 该函数用来在relName表中插入具有指定属性值的新元组，
@@ -122,9 +128,8 @@ public:
    * @param values
    * @return
    */
-  // add szj [insert multi values]20211029:b
-  RC insert_record(Trx * trx, const char *dbname, const char *relation_name, int value_num, const Value *values, int record_num);
-  // add:e
+  RC insert_record(Trx * trx, const char *dbname, const char *relation_name, int value_num, const Value *values);
+
   /**
    * 该函数用来删除relName表中所有满足指定条件的元组以及该元组对应的索引项。
    * 如果没有指定条件，则此方法删除relName关系中所有元组。

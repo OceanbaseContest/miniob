@@ -17,6 +17,9 @@ See the Mulan PSL v2 for more details. */
 #include "record_manager.h"
 #include "storage/default/disk_buffer_pool.h"
 #include "sql/parser/parse_defs.h"
+//add bzb [multi index] 20211107:b
+#include "storage/common/index.h"
+//20211107:e
 
 struct IndexFileHeader {
   int attr_length;
@@ -25,6 +28,11 @@ struct IndexFileHeader {
   PageNum root_page; // 初始时，root_page一定是1
   int node_num;
   int order;
+  //add bzb [multi index] 20211107:b
+  AttrType multi_attr_type[50];   //多列索引对应属性类型
+  int multi_attr_length[50];      //多列索引对应属性长度
+  int multi_attr_count;           //多列索引属性总数
+  //20211107:e
 };
 
 struct IndexNode {
@@ -57,6 +65,9 @@ public:
    * attrType描述被索引属性的类型，attrLength描述被索引属性的长度
    */
   RC create(const char *file_name, AttrType attr_type, int attr_length);
+  //add bzb [multi index] 20211107:b
+  RC create_multi(const char *file_name, const FieldMeta *field_meta[], int field_count);
+  //20211107:e
 
   /**
    * 打开名为fileName的索引文件。
@@ -74,8 +85,16 @@ public:
    * 此函数向IndexHandle对应的索引中插入一个索引项。
    * 参数pData指向要插入的属性值，参数rid标识该索引项对应的元组，
    * 即向索引中插入一个值为（*pData，rid）的键值对
+   * bzb 加入了unique标志位
    */
   RC insert_entry(const char *pkey, const RID *rid);
+  //add bzb [unique index] 20211103:b
+  RC insert_entry(const char *pkey, const RID *rid, int is_unique_index);
+  //20211103:e
+
+  //add bzb [multi index] 20211107:b
+  RC insert_multi_entry(const char *pkey, FieldMeta *field_meta_multi, const RID *rid, int is_unique_index, int field_count);
+  //20211107:e
 
   /**
    * 从IndexHandle句柄对应的索引中删除一个值为（*pData，rid）的索引项
@@ -95,8 +114,17 @@ public:
   RC print_tree();
 protected:
   RC find_leaf(const char *pkey, PageNum *leaf_page);
-  RC insert_into_leaf(PageNum leaf_page, const char *pkey, const RID *rid);
-  RC insert_into_leaf_after_split(PageNum leaf_page, const char *pkey, const RID *rid);
+  //add bzb [multi index] 20211107:b
+  RC find_leaf_multi(const char *pkey, PageNum *leaf_page);
+  //20211107:e
+  //add bzb [unique index] 20211103:b
+  RC insert_into_leaf(PageNum leaf_page, const char *pkey, const RID *rid, int is_unique_index);
+  RC insert_into_leaf_after_split(PageNum leaf_page, const char *pkey, const RID *rid, int is_unique_index);
+  //20211103:e
+  //add bzb [multi index] 20211107:b
+  RC insert_into_leaf_multi(PageNum leaf_page, const char *pkey, const RID *rid, int is_unique_index);
+  RC insert_into_leaf_after_split_multi(PageNum leaf_page, const char *pkey, const RID *rid, int is_unique_index);
+  //20211107:e
   RC insert_into_parent(PageNum parent_page, PageNum leaf_page, const char *pkey, PageNum right_page);
   RC insert_into_new_root(PageNum leaf_page, const char *pkey, PageNum right_page);
   RC insert_intern_node(PageNum parent_page, PageNum leaf_page, PageNum right_page, const char *pkey);

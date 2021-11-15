@@ -40,7 +40,7 @@ DefaultConditionFilter::~DefaultConditionFilter()
 
 RC DefaultConditionFilter::init(const ConDesc &left, const ConDesc &right, AttrType attr_type, CompOp comp_op)
 {
-  if (attr_type < CHARS || attr_type > DATES) {//mod zjx[date&check]b:20211027
+  if (attr_type < CHARS || attr_type > FLOATS) {
     LOG_ERROR("Invalid condition with unsupported attribute type: %d", attr_type);
     return RC::INVALID_ARGUMENT;
   }
@@ -65,7 +65,6 @@ RC DefaultConditionFilter::init(Table &table, const Condition &condition)
 
   AttrType type_left = UNDEFINED;
   AttrType type_right = UNDEFINED;
-  AttrType comp_type = UNDEFINED; //add zjx[date]b:20211102
 
   if (1 == condition.left_is_attr) {
     left.is_attr = true;
@@ -117,32 +116,11 @@ RC DefaultConditionFilter::init(Table &table, const Condition &condition)
   //  }
   // NOTE：这里没有实现不同类型的数据比较，比如整数跟浮点数之间的对比
   // 但是选手们还是要实现。这个功能在预选赛中会出现
-
-  /*mod zjx[date&check]b:20211027
-   date和char的情况已处理
-   int和float的情况已处理
-   
-  */
   if (type_left != type_right) {
-    if ((type_left == INTS && type_right == FLOATS) || (type_left == FLOATS && type_right == INTS)) {
-      comp_type = FLOATS;
-    } else if(type_left == CHARS && type_right == DATES){
-      if(!check_date((char*)left.value)) return RC::RECORD_INVALID_KEY;
-      refactor_date((char*)left.value);
-      comp_type = DATES;
-    } else if(type_left == DATES && type_right == CHARS){
-      if(!check_date((char*)right.value)) return RC::RECORD_INVALID_KEY;
-      refactor_date((char*)right.value);
-      comp_type = DATES;
-    } else{
-      return RC::SCHEMA_FIELD_TYPE_MISMATCH;
-    }
-  } else {
-    comp_type = type_left;
+    return RC::SCHEMA_FIELD_TYPE_MISMATCH;
   }
 
-  return init(left, right, comp_type, condition.comp);
-  //e:20211027
+  return init(left, right, type_left, condition.comp);
 }
 
 bool DefaultConditionFilter::filter(const Record &rec) const
@@ -164,7 +142,6 @@ bool DefaultConditionFilter::filter(const Record &rec) const
 
   int cmp_result = 0;
   switch (attr_type_) {
-    case DATES://add zjx[date]b:20211027
     case CHARS: {  // 字符串都是定长的，直接比较
       // 按照C字符串风格来定
       cmp_result = strcmp(left_value, right_value);

@@ -25,9 +25,6 @@ extern double atof();
 WHITE_SAPCE      [\ \t\b\f]
 DIGIT            [0-9]+
 
-/* add szj [select aggregate support]20211106:b */
-/* AGGR_FUNC    	 [A-Za-z]+[A-Za-z]*  */
-/* add:e */
 ID               [A-Za-z_]+[A-Za-z0-9_]*
 DOT              \.
 QUOTE            [\'\"]
@@ -52,6 +49,7 @@ QUOTE            [\'\"]
 [Tt][Aa][Bb][Ll][Ee]					           RETURN_TOKEN(TABLE);
 [Tt][Aa][Bb][Ll][Ee][Ss]			           RETURN_TOKEN(TABLES);
 [Ii][Nn][Dd][Ee][Xx]                  	 RETURN_TOKEN(INDEX);
+[Uu][Nn][Ii][Qq][Uu][Ee]                  	 RETURN_TOKEN(UNIQUE);	//add bzb [unique index] 20211103:b		e
 [Oo][Nn]								                 RETURN_TOKEN(ON);
 [Ss][Hh][Oo][Ww]                         RETURN_TOKEN(SHOW);
 [Ss][Yy][Nn][Cc]                         RETURN_TOKEN(SYNC);
@@ -71,19 +69,10 @@ QUOTE            [\'\"]
 [Ii][Nn][Tt]					                   RETURN_TOKEN(INT_T);
 [Cc][Hh][Aa][Rr]				                 RETURN_TOKEN(STRING_T);
 [Ff][Ll][Oo][Aa][Tt]			               RETURN_TOKEN(FLOAT_T);
-[Dd][Aa][Tt][Ee]							   RETURN_TOKEN(DATE_T); //add zjx[date]b:20211102
 [Ll][Oo][Aa][Dd]			                   RETURN_TOKEN(LOAD);
 [Dd][Aa][Tt][Aa]	                       RETURN_TOKEN(DATA);
 [Ii][Nn][Ff][Ii][Ll][Ee]                 RETURN_TOKEN(INFILE);
-	/* add zjx[select]b:20211024 */
-    /*[Jj][Ii][Oo][Nn]						 RETURN_TOKEN(JOIN); */
-  /* add szj [select aggregate support]20211106:b */
-	/* {AGGR_FUNC}										   	   yylval->string=strdup(yytext); RETURN_TOKEN(AGGR_FUNC); */
- 	/* "1"													   RETURN_TOKEN(ONE); */
- /* add:e */
-{ID}								                   yylval->string=strdup(yytext); RETURN_TOKEN(ID);
-
-
+{ID}							                       yylval->string=strdup(yytext); RETURN_TOKEN(ID);
 "("								                       RETURN_TOKEN(LBRACE);
 ")"								                       RETURN_TOKEN(RBRACE);
 

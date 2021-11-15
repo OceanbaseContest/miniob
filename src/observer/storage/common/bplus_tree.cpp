@@ -24,12 +24,12 @@ int float_compare(float f1, float f2) {
   }
   return result > 0 ? 1: -1;
 }
-
+//get_index_node 返回pdata中对应的keys和rids的起始位置，其中keys = data+rid = record
 IndexNode * BplusTreeHandler::get_index_node(char *page_data) const {
   IndexNode *node = (IndexNode  *)(page_data + sizeof(IndexFileHeader));
   node->keys = (char *)node + sizeof(IndexNode);
   node->rids = (RID *)(node->keys + file_header_.order * file_header_.key_length);
-  return node;
+  return node; 
 }
 
 RC BplusTreeHandler::sync() {
@@ -104,6 +104,91 @@ RC BplusTreeHandler::create(const char *file_name, AttrType attr_type, int attr_
 
   return SUCCESS;
 }
+
+//add bzb [multi index] 20211107:b
+RC BplusTreeHandler::create_multi(const char *file_name, const FieldMeta *field_meta[], int field_count) {
+  BPPageHandle page_handle;
+  IndexNode *root;
+  char *pdata;
+  RC rc;
+  DiskBufferPool *disk_buffer_pool = theGlobalDiskBufferPool();
+  rc = disk_buffer_pool->create_file(file_name);
+  if(rc!=SUCCESS){
+    return rc;
+  }
+
+  int file_id;
+  rc = disk_buffer_pool->open_file(file_name, &file_id);
+  if(rc != SUCCESS){
+    LOG_ERROR("Failed to open file. file name=%s, rc=%d:%s", file_name, rc, strrc(rc));
+    return rc;
+  }
+  rc = disk_buffer_pool->allocate_page(file_id, &page_handle);
+  if(rc!=SUCCESS){
+    LOG_ERROR("Failed to allocate page. file name=%s, rc=%d:%s", file_name, rc, strrc(rc));
+    return rc;
+  }
+  rc = disk_buffer_pool->get_data(&page_handle, &pdata);
+  if(rc!=SUCCESS){
+    LOG_ERROR("Failed to get data. file name=%s, rc=%d:%s", file_name, rc, strrc(rc));
+    return rc;
+  }
+
+  PageNum page_num;
+  rc = disk_buffer_pool->get_page_num(&page_handle, &page_num);
+  if(rc!=SUCCESS){
+    LOG_ERROR("Failed to get page num. file name=%s, rc=%d:%s", file_name, rc, strrc(rc));
+    return rc;
+  }
+
+  IndexFileHeader *file_header =(IndexFileHeader *)pdata;
+  file_header->multi_attr_count = field_count;
+  for (int i = 0; i < field_count; i++) {
+    file_header->multi_attr_type[i] = field_meta[i]->type();
+  }
+  for (int i = 0; i < field_count; i++) {
+    file_header->multi_attr_length[i] = field_meta[i]->len();
+  }
+  file_header->key_length = 0;
+  for (int i = 0; i < field_count; i++) {
+    file_header->key_length += file_header->multi_attr_length[i];
+  }
+  file_header->key_length += sizeof(RID);
+  LOG_INFO("key_length = %d", file_header->key_length);
+
+  //file_header->attr_length = attr_length;
+  //file_header->key_length = attr_length + sizeof(RID);
+  //file_header->attr_type = attr_type;
+  file_header->node_num = 1;
+  file_header->order=((int)BP_PAGE_DATA_SIZE-sizeof(IndexFileHeader)-sizeof(IndexNode))/(file_header->key_length+sizeof(RID));
+  file_header->root_page = page_num;
+
+  root = get_index_node(pdata);
+  root->is_leaf = 1;
+  root->key_num = 0;
+  root->parent = -1;
+  root->keys = nullptr;
+  root->rids = nullptr;
+
+  rc = disk_buffer_pool->mark_dirty(&page_handle);
+  if(rc!=SUCCESS){
+    return rc;
+  }
+
+  rc = disk_buffer_pool->unpin_page(&page_handle);
+  if(rc!=SUCCESS){
+    return rc;
+  }
+
+  disk_buffer_pool_ = disk_buffer_pool;
+  file_id_ = file_id;
+
+  memcpy(&file_header_, pdata, sizeof(file_header_));
+  header_dirty_ = false;
+
+  return SUCCESS;
+}
+//20211107:e
 
 RC BplusTreeHandler::open(const char *file_name) {
   RC rc;
@@ -180,7 +265,6 @@ int CompareKey(const char *pdata, const char *pkey,AttrType attr_type,int attr_l
       return float_compare(f1, f2);
     }
       break;
-    case DATES://add zjx[date]b:20211027
     case CHARS: {
       s1 = pdata;
       s2 = pkey;
@@ -193,36 +277,136 @@ int CompareKey(const char *pdata, const char *pkey,AttrType attr_type,int attr_l
   }
   return -2;//This means error happens
 }
+
+//add bzb [multi index] 20211107:b
+int CompareKey_multi(const char *pdata, const char *pkey, AttrType* attr_type, int* attr_length, int multi_attr_count) { // 简化
+  int i1,i2;
+  float f1,f2;
+  const char *s1,*s2;
+  int equal_flag = 0;
+  int attr_length_pre = 0;//偏移量
+  int cmp_res = 0;
+
+  for (int i = 0; i < multi_attr_count; i++) {
+    switch(attr_type[i]){
+      case INTS: {
+        i1 = *(int *) pdata + attr_length_pre;
+        i2 = *(int *) pkey + attr_length_pre;
+        LOG_INFO("i = %d, i1 = %d, i2 = %d", i, i1, i2);
+        if (i1 > i2)
+          return 1;
+        if (i1 < i2)
+          return -1;
+        if (i1 == i2) {
+          if (i == multi_attr_count-1) {
+            LOG_INFO("return 0");
+            return 0;
+          }
+          else {
+            LOG_INFO("equal but not return");
+          }
+        }
+      }
+        break;
+      case FLOATS: {
+        f1 = *(float *) pdata + attr_length_pre;
+        f2 = *(float *) pkey + attr_length_pre;
+        cmp_res = float_compare(f1, f2);
+        if (cmp_res == 0) {
+          if (i == multi_attr_count-1) {
+            return cmp_res;
+          }
+          else{
+
+          }
+        }
+        else {
+          return cmp_res;
+        }
+      }
+        break;
+      case CHARS: {
+        s1 = pdata + attr_length_pre;
+        s2 = pkey + attr_length_pre;
+        cmp_res = strncmp(s1, s2, attr_length[i]);
+        if (cmp_res == 0) {
+          if (i == multi_attr_count-1) {
+            return cmp_res;
+          }
+          else{
+
+          }
+        }
+        else {
+          return cmp_res;
+        }
+      }
+        break;
+      default:{
+        LOG_PANIC("Unknown attr type: %d", attr_type);
+      }
+    }
+    attr_length_pre += attr_length[i];
+  }
+  return -2;//This means error happens
+}
+//20211107:e
+
 int CmpKey(AttrType attr_type, int attr_length, const char *pdata, const char *pkey)
 {
-  int result = CompareKey(pdata, pkey, attr_type, attr_length);
+  int result = CompareKey(pdata, pkey, attr_type, attr_length); //相等返回0, > 返回1, < 返回-1 
   if (0 != result) {
     return result;
   }
   RID *rid1 = (RID *) (pdata + attr_length);
   RID *rid2 = (RID *) (pkey + attr_length);
-  return CmpRid(rid1, rid2);
+  return CmpRid(rid1, rid2);//RID相等返回0
 }
 
+//add bzb [multi index] 20211107:b
+//pdata = 要插入的数据，pkey = B+树中的数据
+int CmpKey_multi(AttrType* attr_type, int* attr_length, const char *pdata, const char *pkey, int multi_attr_count)
+{
+  int result = CompareKey_multi(pdata, pkey, attr_type, attr_length, multi_attr_count); //相等返回0, > 返回1, < 返回-1 
+  if (0 != result) {
+    return result;
+  }
+  int attr_length_multi = 0;
+  for (int i = 0; i < multi_attr_count; i++)
+  {
+    attr_length_multi += attr_length[i];
+  }
+  RID *rid1 = (RID *) (pdata + attr_length_multi);
+  RID *rid2 = (RID *) (pkey + attr_length_multi);
+  return CmpRid(rid1, rid2);//RID相等返回0
+}
+//20211107:e
+
+//根据pkey对应的值，返回一个合适的leaf_page的page_num
 RC BplusTreeHandler::find_leaf(const char *pkey,PageNum *leaf_page) {
   RC rc;
   BPPageHandle page_handle;
   IndexNode *node;
   char *pdata;
   int i,tmp;
-  rc = disk_buffer_pool_->get_this_page(file_id_, file_header_.root_page, &page_handle);
+  rc = disk_buffer_pool_->get_this_page(file_id_, file_header_.root_page, &page_handle);//把第一页拿进来
   if(rc!=SUCCESS){
     return rc;
   }
-
+  //get page.data
   rc = disk_buffer_pool_->get_data(&page_handle, &pdata);
   if(rc!=SUCCESS){
     return rc;
   }
+  //pdata = page.data
+  //根据pdata赋值node->keys 和 node->rids
+  //get_index_node 返回pdata中对应的keys和rids的起始位置，其中keys = data+rid = record, 并且也给node赋值了
   node = get_index_node(pdata);
   while(0 == node->is_leaf){
     for(i = 0; i < node->key_num; i++){
-      tmp = CmpKey(file_header_.attr_type, file_header_.attr_length,pkey,node->keys + i * file_header_.key_length);
+      //data和RID都相等，则返回0; pkey的值<pdata的值，则返回-1; 或pkey == pdata，其page_num小于 或 slot_num小于
+      //根据： 值->page_num->slot_num  找 i
+      tmp = CmpKey(file_header_.attr_type, file_header_.attr_length,pkey,node->keys + i * file_header_.key_length); 
       if(tmp < 0)
         break;
     }
@@ -251,7 +435,64 @@ RC BplusTreeHandler::find_leaf(const char *pkey,PageNum *leaf_page) {
   return SUCCESS;
 }
 
-RC BplusTreeHandler::insert_into_leaf(PageNum leaf_page, const char *pkey, const RID *rid)
+//add bzb [multi index] 20211107:b
+RC BplusTreeHandler::find_leaf_multi(const char *pkey, PageNum *leaf_page) {
+  RC rc;
+  BPPageHandle page_handle;
+  IndexNode *node;
+  char *pdata;
+  int i,tmp;
+  rc = disk_buffer_pool_->get_this_page(file_id_, file_header_.root_page, &page_handle);//把第一页拿进来
+  if(rc!=SUCCESS){
+    return rc;
+  }
+  //get page.data
+  rc = disk_buffer_pool_->get_data(&page_handle, &pdata);
+  if(rc!=SUCCESS){
+    return rc;
+  }
+  //pdata = page.data
+  //根据pdata赋值node->keys 和 node->rids
+  //get_index_node 返回pdata中对应的keys和rids的起始位置，其中keys = data+rid = record, 并且也给node赋值了
+  node = get_index_node(pdata);
+  while(0 == node->is_leaf){
+    for(i = 0; i < node->key_num; i++){
+      //data和RID都相等，则返回0; pkey的值<pdata的值，则返回-1; 或pkey == pdata，其page_num小于 或 slot_num小于
+      //根据： 值->page_num->slot_num  找 i
+      tmp = CmpKey_multi(file_header_.multi_attr_type, file_header_.multi_attr_length, pkey, node->keys + i * file_header_.key_length, file_header_.multi_attr_count); 
+      //tmp = CmpKey(file_header_.attr_type, file_header_.attr_length,pkey,node->keys + i * file_header_.key_length); 
+      if(tmp < 0)
+        break;
+    }
+    rc = disk_buffer_pool_->unpin_page(&page_handle);
+    if(rc!=SUCCESS){
+      return rc;
+    }
+    rc = disk_buffer_pool_->get_this_page(file_id_, node->rids[i].page_num, &page_handle);
+    if(rc!=SUCCESS){
+      return rc;
+    }
+    rc = disk_buffer_pool_->get_data(&page_handle, &pdata);
+    if(rc!=SUCCESS){
+      return rc;
+    }
+    node = get_index_node(pdata);
+  }
+  rc = disk_buffer_pool_->get_page_num(&page_handle, leaf_page);
+  if(rc!=SUCCESS){
+    return rc;
+  }
+  rc = disk_buffer_pool_->unpin_page(&page_handle);
+  if(rc!=SUCCESS){
+    return rc;
+  }
+  return SUCCESS;
+}
+//20211107:e
+
+//add bzb [unique index] 20211103:b
+RC BplusTreeHandler::insert_into_leaf(PageNum leaf_page, const char *pkey, const RID *rid, int is_unique_index)
+//20211103:e
 {
   int i,insert_pos,tmp;
   BPPageHandle  page_handle;
@@ -259,7 +500,7 @@ RC BplusTreeHandler::insert_into_leaf(PageNum leaf_page, const char *pkey, const
   char *from,*to;
   IndexNode *node;
   RC rc;
-
+  LOG_INFO("is_unique_index = %d", is_unique_index);
   rc = disk_buffer_pool_->get_this_page(file_id_, leaf_page, &page_handle);
   if(rc != SUCCESS){
     return rc;
@@ -268,9 +509,45 @@ RC BplusTreeHandler::insert_into_leaf(PageNum leaf_page, const char *pkey, const
   if(rc != SUCCESS){
     return rc;
   }
+  //pdata = page.data
+  //根据pdata赋值node->keys 和 node->rids
+  //get_index_node 返回pdata中对应的keys和rids的起始位置，其中keys = data+rid = record, node也被赋值了
   node = get_index_node(pdata);
 
+  //add bzb [unique index] 20211103:b
+  if (is_unique_index == 1) {  //unique index
+    LOG_INFO("is_unique_index222 = %d", is_unique_index);
+    for(insert_pos = 0; insert_pos < node->key_num; insert_pos++){
+      //pkey的值<pdata的值，则返回-1; 或pkey == pdata，其page_num小于 或 slot_num小于
+      tmp = CompareKey(pkey, node->keys + insert_pos * file_header_.key_length, file_header_.attr_type, file_header_.attr_length);
+      //tmp = CmpKey(file_header_.attr_type, file_header_.attr_length, pkey, node->keys + insert_pos * file_header_.key_length);
+      if (tmp == 0) {
+        LOG_ERROR("Can not create unique index, because the value of the column is duplicate");
+        return RC::RECORD_DUPLICATE_KEY;
+      }
+      if(tmp < 0)
+        break;
+    }
+  }
+  else {
+    LOG_INFO("is_unique_index222 = %d", is_unique_index);
+    for(insert_pos = 0; insert_pos < node->key_num; insert_pos++){
+      //data和RID都相等，则返回0; pkey的值<pdata的值，则返回-1; 或pkey == pdata，其page_num小于 或 slot_num小于
+      //根据： 值->page_num->slot_num  找 insert_pos
+      tmp = CmpKey(file_header_.attr_type, file_header_.attr_length, pkey, node->keys + insert_pos * file_header_.key_length);
+      if (tmp == 0) {
+        return RC::RECORD_DUPLICATE_KEY;
+      }
+      if(tmp < 0)
+        break;
+    }
+  }
+  //20211103:e
+
+  /*
   for(insert_pos = 0; insert_pos < node->key_num; insert_pos++){
+    //data和RID都相等，则返回0; pkey的值<pdata的值，则返回-1; 或pkey == pdata，其page_num小于 或 slot_num小于
+    //根据： 值->page_num->slot_num  找 insert_pos
     tmp = CmpKey(file_header_.attr_type, file_header_.attr_length, pkey, node->keys + insert_pos * file_header_.key_length);
     if (tmp == 0) {
       return RC::RECORD_DUPLICATE_KEY;
@@ -278,6 +555,9 @@ RC BplusTreeHandler::insert_into_leaf(PageNum leaf_page, const char *pkey, const
     if(tmp < 0)
       break;
   }
+  */
+
+  //排序，像冒泡，把insert_pos之后的往后推一位，腾出空间插入数据
   for(i = node->key_num; i > insert_pos; i--){
     from = node->keys+(i-1)*file_header_.key_length;
     to = node->keys+i*file_header_.key_length;
@@ -297,6 +577,94 @@ RC BplusTreeHandler::insert_into_leaf(PageNum leaf_page, const char *pkey, const
   }
   return SUCCESS;
 }
+
+//add bzb [multi index] 20211107:b
+RC BplusTreeHandler::insert_into_leaf_multi(PageNum leaf_page, const char *pkey, const RID *rid, int is_unique_index)
+{
+  int i,insert_pos,tmp;
+  BPPageHandle  page_handle;
+  char *pdata;
+  char *from,*to;
+  IndexNode *node;
+  RC rc;
+  LOG_INFO("is_unique_index = %d", is_unique_index);
+  rc = disk_buffer_pool_->get_this_page(file_id_, leaf_page, &page_handle);
+  if(rc != SUCCESS){
+    return rc;
+  }
+  rc = disk_buffer_pool_->get_data(&page_handle, &pdata);
+  if(rc != SUCCESS){
+    return rc;
+  }
+  //pdata = page.data
+  //根据pdata赋值node->keys 和 node->rids
+  //get_index_node 返回pdata中对应的keys和rids的起始位置，其中keys = data+rid = record, node也被赋值了
+  node = get_index_node(pdata);
+
+  //add bzb [unique index] 20211103:b
+  if (is_unique_index == 1) {  //unique index
+    LOG_INFO("is_unique_index222 = %d", is_unique_index);
+    for(insert_pos = 0; insert_pos < node->key_num; insert_pos++){
+      //pkey的值<pdata的值，则返回-1; 或pkey == pdata，其page_num小于 或 slot_num小于
+      tmp = CompareKey_multi(pkey, node->keys + insert_pos * file_header_.key_length, file_header_.multi_attr_type, file_header_.multi_attr_length,file_header_.multi_attr_count);
+      //tmp = CmpKey(file_header_.attr_type, file_header_.attr_length, pkey, node->keys + insert_pos * file_header_.key_length);
+      if (tmp == 0) {
+        LOG_ERROR("Can not create unique index, because the value of the column is duplicate");
+        return RC::RECORD_DUPLICATE_KEY;
+      }
+      if(tmp < 0)
+        break;
+    }
+  }
+  else {
+    LOG_INFO("is_unique_index222 = %d", is_unique_index);
+    for(insert_pos = 0; insert_pos < node->key_num; insert_pos++){
+      //data和RID都相等，则返回0; pkey的值<pdata的值，则返回-1; 或pkey == pdata，其page_num小于 或 slot_num小于
+      //根据： 值->page_num->slot_num  找 insert_pos
+      tmp = CmpKey_multi(file_header_.multi_attr_type, file_header_.multi_attr_length, pkey, node->keys + i * file_header_.key_length, file_header_.multi_attr_count); 
+      if (tmp == 0) {
+        return RC::RECORD_DUPLICATE_KEY;
+      }
+      if(tmp < 0)
+        break;
+    }
+  }
+  //20211103:e
+
+  /*
+  for(insert_pos = 0; insert_pos < node->key_num; insert_pos++){
+    //data和RID都相等，则返回0; pkey的值<pdata的值，则返回-1; 或pkey == pdata，其page_num小于 或 slot_num小于
+    //根据： 值->page_num->slot_num  找 insert_pos
+    tmp = CmpKey(file_header_.attr_type, file_header_.attr_length, pkey, node->keys + insert_pos * file_header_.key_length);
+    if (tmp == 0) {
+      return RC::RECORD_DUPLICATE_KEY;
+    }
+    if(tmp < 0)
+      break;
+  }
+  */
+
+  //排序，像冒泡，把insert_pos之后的往后推一位，腾出空间插入数据
+  for(i = node->key_num; i > insert_pos; i--){
+    from = node->keys+(i-1)*file_header_.key_length;
+    to = node->keys+i*file_header_.key_length;
+    memcpy(to, from, file_header_.key_length);
+    memcpy(node->rids + i, node->rids + i-1, sizeof(RID));
+  }
+  memcpy(node->keys + insert_pos * file_header_.key_length, pkey, file_header_.key_length);
+  memcpy(node->rids + insert_pos, rid, sizeof(RID));
+  node->key_num++; //叶子结点增加一条记录
+  rc = disk_buffer_pool_->mark_dirty(&page_handle);
+  if(rc != SUCCESS){
+    return rc;
+  }
+  rc = disk_buffer_pool_->unpin_page(&page_handle);
+  if(rc != SUCCESS){
+    return rc;
+  }
+  return SUCCESS;
+}
+//20211107:e
 
 RC BplusTreeHandler::print() {
   IndexNode *node;
@@ -333,8 +701,9 @@ RC BplusTreeHandler::print() {
   }
   return rc;
 }
-
-RC BplusTreeHandler::insert_into_leaf_after_split(PageNum leaf_page, const char *pkey, const RID *rid) {
+//add bzb [unique index] 20211103:b
+RC BplusTreeHandler::insert_into_leaf_after_split(PageNum leaf_page, const char *pkey, const RID *rid, int is_unique_index) {
+//20211103:e
   RC rc;
   BPPageHandle  page_handle1,page_handle2;
   IndexNode *leaf,*new_node;
@@ -390,17 +759,45 @@ RC BplusTreeHandler::insert_into_leaf_after_split(PageNum leaf_page, const char 
     return RC::NOMEM;
   }
 
+  //add bzb [unique index] 20211103:b
+  if (is_unique_index == 1) {  //unique index
+    LOG_INFO("is_unique_index333 = %d", is_unique_index);
+    for(insert_pos=0;insert_pos<leaf->key_num;insert_pos++){
+      tmp = CompareKey(pkey, leaf->keys + insert_pos * file_header_.key_length, file_header_.attr_type, file_header_.attr_length);
+      if (tmp == 0) {
+        LOG_ERROR("Can not create unique index, because the value of the column is duplicate");
+        return RC::RECORD_DUPLICATE_KEY;
+      }
+      if(tmp < 0)
+        break;
+    }
+  }
+  else {
+    LOG_INFO("is_unique_index333 = %d", is_unique_index);
+    for(insert_pos=0;insert_pos<leaf->key_num;insert_pos++){
+      tmp=CmpKey(file_header_.attr_type, file_header_.attr_length, pkey, leaf->keys+insert_pos*file_header_.key_length);
+      if(tmp<0)//找小的
+        break;
+    }
+  }
+  //20211103:e
+
+  /*
   for(insert_pos=0;insert_pos<leaf->key_num;insert_pos++){
     tmp=CmpKey(file_header_.attr_type, file_header_.attr_length, pkey, leaf->keys+insert_pos*file_header_.key_length);
-    if(tmp<0)
+    if(tmp<0)//找小的
       break;
   }
+  */
+
+  //拷贝rid和数据到temp中，空出insert_pos的位置
   for(i=0,j=0;i<leaf->key_num;i++,j++){
     if(j==insert_pos)
       j++;
-    memcpy(temp_keys+j*file_header_.key_length,leaf->keys+i*file_header_.key_length,file_header_.key_length);
+    memcpy(temp_keys+j*file_header_.key_length, leaf->keys+i*file_header_.key_length, file_header_.key_length);
     memcpy(temp_pointers+j,leaf->rids+i,sizeof(RID));
   }
+  //新数据拷贝到temp的insert_pos位置
   memcpy(temp_keys+insert_pos*file_header_.key_length,pkey,file_header_.key_length);
   memcpy(temp_pointers+insert_pos,rid,sizeof(RID));
 
@@ -421,9 +818,11 @@ RC BplusTreeHandler::insert_into_leaf_after_split(PageNum leaf_page, const char 
   free(temp_pointers);
   free(temp_keys);
 
+  //new_node的最后一个RID保存leaf_node的最后一个RID
   memcpy(new_node->rids+file_header_.order-1,leaf->rids+file_header_.order-1,sizeof(RID));
   tmprid.page_num = new_page;
   tmprid.slot_num = -1;
+  //leaf_node的最后一个RID保存为new_page的page_num和slot_num
   memcpy(leaf->rids+file_header_.order-1,&tmprid,sizeof(RID));
 
   new_key=(char *)malloc(file_header_.key_length);
@@ -431,6 +830,7 @@ RC BplusTreeHandler::insert_into_leaf_after_split(PageNum leaf_page, const char 
     LOG_ERROR("Failed to alloc memory for new key. size=%d", file_header_.key_length);
     return RC::NOMEM;
   }
+  //将new_node的第一个也是最大的key保存到new_key中
   memcpy(new_key,new_node->keys,file_header_.key_length);
 
   rc = disk_buffer_pool_->mark_dirty(&page_handle1);
@@ -455,7 +855,7 @@ RC BplusTreeHandler::insert_into_leaf_after_split(PageNum leaf_page, const char 
     free(new_key);
     return rc;
   }
-
+  //将左右page插入父节点对应位置，父节点也可能继续分裂，就是个B+树
   rc=insert_into_parent(parent_page,leaf_page,new_key,new_page); // 插入失败，应该回滚之前的叶子节点
   if(rc!=SUCCESS){
     free(new_key);
@@ -464,6 +864,170 @@ RC BplusTreeHandler::insert_into_leaf_after_split(PageNum leaf_page, const char 
   free(new_key);
   return SUCCESS;
 }
+
+//add bzb [multi index] 20211107:b
+RC BplusTreeHandler::insert_into_leaf_after_split_multi(PageNum leaf_page, const char *pkey, const RID *rid, int is_unique_index) {
+  RC rc;
+  BPPageHandle  page_handle1,page_handle2;
+  IndexNode *leaf,*new_node;
+  PageNum new_page,parent_page;
+  RID *temp_pointers,tmprid;
+  char *temp_keys,*new_key;
+  char *pdata;
+  int insert_pos,split,i,j,tmp;
+
+  rc = disk_buffer_pool_->get_this_page(file_id_, leaf_page, &page_handle1);
+  if(rc!=SUCCESS){
+    return rc;
+  }
+  rc = disk_buffer_pool_->get_data(&page_handle1, &pdata);
+  if(rc!=SUCCESS){
+    return rc;
+  }
+  leaf = get_index_node(pdata);
+
+  //add a new node
+  rc = disk_buffer_pool_->allocate_page(file_id_, &page_handle2);
+  if(rc!=SUCCESS){
+    return rc;
+  }
+
+  rc = disk_buffer_pool_->get_data(&page_handle2, &pdata);
+  if(rc!=SUCCESS){
+    return rc;
+  }
+  rc = disk_buffer_pool_->get_page_num(&page_handle2, &new_page);
+  if(rc!=SUCCESS){
+    return rc;
+  }
+  new_node = get_index_node(pdata);
+  new_node->key_num = 0;
+  new_node->is_leaf = 1;
+  new_node->parent = leaf->parent;
+
+  parent_page = leaf->parent;
+
+  // print();
+
+  temp_keys = (char *)malloc(file_header_.key_length*file_header_.order);
+  if(temp_keys == nullptr){
+    LOG_ERROR("Failed to alloc memory for temp key. size=%d", file_header_.key_length*file_header_.order);
+    return RC::NOMEM;
+  }
+
+  temp_pointers = (RID *)malloc((file_header_.order+1)*sizeof(RID));
+  if(temp_pointers == nullptr){
+    LOG_ERROR("Failed to alloc memory for temp pointers. size=%ld", (file_header_.order + 1)* sizeof(RID));
+    free(temp_keys);
+    return RC::NOMEM;
+  }
+
+  if (is_unique_index == 1) {  //unique index
+    LOG_INFO("is_unique_index333 = %d", is_unique_index);
+    for(insert_pos=0;insert_pos<leaf->key_num;insert_pos++){
+      //tmp = CompareKey(pkey, leaf->keys + insert_pos * file_header_.key_length, file_header_.attr_type, file_header_.attr_length);
+      tmp = CompareKey_multi(pkey, leaf->keys + insert_pos * file_header_.key_length, file_header_.multi_attr_type, file_header_.multi_attr_length,file_header_.multi_attr_count);
+      if (tmp == 0) {
+        LOG_ERROR("Can not create unique index, because the value of the column is duplicate");
+        return RC::RECORD_DUPLICATE_KEY;
+      }
+      if(tmp < 0)
+        break;
+    }
+  }
+  else {
+    LOG_INFO("is_unique_index333 = %d", is_unique_index);
+    for(insert_pos=0;insert_pos<leaf->key_num;insert_pos++){
+      //tmp=CmpKey(file_header_.attr_type, file_header_.attr_length, pkey, leaf->keys+insert_pos*file_header_.key_length);
+      tmp = CmpKey_multi(file_header_.multi_attr_type, file_header_.multi_attr_length, pkey, leaf->keys + insert_pos * file_header_.key_length, file_header_.multi_attr_count);
+      if(tmp<0)//找小的
+        break;
+    }
+  }
+
+  /*
+  for(insert_pos=0;insert_pos<leaf->key_num;insert_pos++){
+    tmp=CmpKey(file_header_.attr_type, file_header_.attr_length, pkey, leaf->keys+insert_pos*file_header_.key_length);
+    if(tmp<0)//找小的
+      break;
+  }
+  */
+
+  //拷贝rid和数据到temp中，空出insert_pos的位置
+  for(i=0,j=0;i<leaf->key_num;i++,j++){
+    if(j==insert_pos)
+      j++;
+    memcpy(temp_keys+j*file_header_.key_length, leaf->keys+i*file_header_.key_length, file_header_.key_length);
+    memcpy(temp_pointers+j,leaf->rids+i,sizeof(RID));
+  }
+  //新数据拷贝到temp的insert_pos位置
+  memcpy(temp_keys+insert_pos*file_header_.key_length,pkey,file_header_.key_length);
+  memcpy(temp_pointers+insert_pos,rid,sizeof(RID));
+
+  split=file_header_.order/2;
+
+  for(i=0;i<split;i++){
+    memcpy(leaf->keys+i*file_header_.key_length,temp_keys+i*file_header_.key_length,file_header_.key_length);
+    memcpy(leaf->rids+i,temp_pointers+i,sizeof(RID));
+  }
+  leaf->key_num=split;
+
+  for(i=split,j=0;i<file_header_.order;i++,j++){
+    memcpy(new_node->keys+j*file_header_.key_length,temp_keys+i*file_header_.key_length,file_header_.key_length);
+    memcpy(new_node->rids+j,temp_pointers+i,sizeof(RID));
+    new_node->key_num++;
+  }
+
+  free(temp_pointers);
+  free(temp_keys);
+
+  //new_node的最后一个RID保存leaf_node的最后一个RID
+  memcpy(new_node->rids+file_header_.order-1,leaf->rids+file_header_.order-1,sizeof(RID));
+  tmprid.page_num = new_page;
+  tmprid.slot_num = -1;
+  //leaf_node的最后一个RID保存为new_page的page_num和slot_num
+  memcpy(leaf->rids+file_header_.order-1,&tmprid,sizeof(RID));
+
+  new_key=(char *)malloc(file_header_.key_length);
+  if(new_key == nullptr){
+    LOG_ERROR("Failed to alloc memory for new key. size=%d", file_header_.key_length);
+    return RC::NOMEM;
+  }
+  //将new_node的第一个也是最大的key保存到new_key中
+  memcpy(new_key,new_node->keys,file_header_.key_length);
+
+  rc = disk_buffer_pool_->mark_dirty(&page_handle1);
+  if(rc!=SUCCESS){
+    free(new_key);
+    return rc;
+  }
+
+  rc = disk_buffer_pool_->unpin_page(&page_handle1);
+  if(rc!=SUCCESS){
+    free(new_key);
+    return rc;
+  }
+
+  rc = disk_buffer_pool_->mark_dirty(&page_handle2);
+  if(rc!=SUCCESS){
+    free(new_key);
+    return rc;
+  }
+  rc = disk_buffer_pool_->unpin_page(&page_handle2);
+  if(rc!=SUCCESS){
+    free(new_key);
+    return rc;
+  }
+  //将左右page插入父节点对应位置，父节点也可能继续分裂，就是个B+树
+  rc=insert_into_parent(parent_page,leaf_page,new_key,new_page); // 插入失败，应该回滚之前的叶子节点
+  if(rc!=SUCCESS){
+    free(new_key);
+    return rc;
+  }
+  free(new_key);
+  return SUCCESS;
+}
+//20211107:e
 
 RC BplusTreeHandler::insert_intern_node(PageNum parent_page,PageNum left_page,PageNum right_page,const char *pkey) {
   int i,insert_pos;
@@ -658,7 +1222,7 @@ RC BplusTreeHandler::insert_intern_node_after_split(PageNum inter_page,PageNum l
     return rc;
   }
   // print();
-
+  
   rc=insert_into_parent(parent_page,inter_page,new_key,new_page);
 
   // print();
@@ -679,7 +1243,7 @@ RC BplusTreeHandler::insert_into_parent(PageNum parent_page, PageNum left_page, 
     return insert_into_new_root(left_page,pkey,right_page);
   }
 
-  rc = disk_buffer_pool_->get_this_page(file_id_, parent_page, &page_handle);
+  rc = disk_buffer_pool_->get_this_page(file_id_, parent_page, &page_handle);//拿到父节点
   if(rc!=SUCCESS){
     return rc;
   }
@@ -703,7 +1267,7 @@ RC BplusTreeHandler::insert_into_parent(PageNum parent_page, PageNum left_page, 
     return insert_intern_node_after_split(parent_page,left_page,right_page,pkey);
   }
 }
-
+//生成一个root_page, root_page的第一个RID保存左页RID,第二个RID保存右页RID, 并让左右页的parent=root_page, 将pkey拷贝为root_page的第一个值
 RC BplusTreeHandler::insert_into_new_root(PageNum left_page, const char *pkey, PageNum right_page) {
   RC rc;
   BPPageHandle page_handle;
@@ -724,17 +1288,17 @@ RC BplusTreeHandler::insert_into_new_root(PageNum left_page, const char *pkey, P
     return rc;
   }
 
-  root = get_index_node(pdata);
+  root = get_index_node(pdata);//分配到的新页
   root->is_leaf=false;
   root->key_num=1;
   root->parent=-1;
-  memcpy(root->keys,pkey,file_header_.key_length);
+  memcpy(root->keys,pkey,file_header_.key_length);//把pkey拷贝到页的第一个key
   rid.page_num = left_page;
   rid.slot_num = -1;
-  memcpy(root->rids,&rid,sizeof(RID));
+  memcpy(root->rids,&rid,sizeof(RID));//第一个RID保存左页RID
   rid.page_num = right_page;
   rid.slot_num = -1;
-  memcpy(root->rids+1,&rid,sizeof(RID));
+  memcpy(root->rids+1,&rid,sizeof(RID));//第二个RID保存右页RID
 
   rc = disk_buffer_pool_->mark_dirty(&page_handle);
   if(rc!=SUCCESS){
@@ -788,8 +1352,10 @@ RC BplusTreeHandler::insert_into_new_root(PageNum left_page, const char *pkey, P
   header_dirty_ = true;
   return SUCCESS;
 }
-
-RC BplusTreeHandler::insert_entry(const char *pkey, const RID *rid) {
+//add bzb [unique index] 20211103:b
+//add param int is_unique_index
+RC BplusTreeHandler::insert_entry(const char *pkey, const RID *rid, int is_unique_index) {
+//20211103:e
   RC rc;
   PageNum leaf_page;
   BPPageHandle page_handle;
@@ -798,14 +1364,15 @@ RC BplusTreeHandler::insert_entry(const char *pkey, const RID *rid) {
   if(nullptr == disk_buffer_pool_){
     return RC::RECORD_CLOSED;
   }
-  key=(char *)malloc(file_header_.key_length);
+  key=(char *)malloc(file_header_.key_length);//key_length：(a int)=12, (a int, b int)=12, (a char)=12？？？？？这玩意儿是个啥？
   if(key == nullptr){
     LOG_ERROR("Failed to alloc memory for key. size=%d", file_header_.key_length);
     return RC::NOMEM;
   }
-  memcpy(key,pkey,file_header_.attr_length);
+  memcpy(key,pkey,file_header_.attr_length); //从pkey的起始位置开始，拷贝attr_length个字节到key指向的地址
   memcpy(key + file_header_.attr_length, rid, sizeof(*rid));
-  rc= find_leaf(key, &leaf_page);
+  //key = record->data + RID  现在，key里面存储了 数据+对应的RID
+  rc= find_leaf(key, &leaf_page);//根据pkey对应的值，返回一个合适的leaf_page的page_num
   if(rc!=SUCCESS){
     free(key);
     return rc;
@@ -824,13 +1391,16 @@ RC BplusTreeHandler::insert_entry(const char *pkey, const RID *rid) {
   }
   leaf=(IndexNode *)(pdata+sizeof(IndexFileHeader));
 
-  if(leaf->key_num<file_header_.order-1){
+  if(leaf->key_num<file_header_.order-1){ //判断是否满足分裂条件
     rc = disk_buffer_pool_->unpin_page(&page_handle);
     if(rc!=SUCCESS){
       free(key);
       return rc;
     }
-    rc=insert_into_leaf(leaf_page,key,rid);
+    //根据key的值，找到索引文件的对应位置，插入，并令key_num++
+    //add bzb [unique index] 20211103:b
+    rc=insert_into_leaf(leaf_page,key,rid,is_unique_index);
+    //20211103:e
     if(rc!=SUCCESS){
       free(key);
       return rc;
@@ -846,13 +1416,111 @@ RC BplusTreeHandler::insert_entry(const char *pkey, const RID *rid) {
     }
 
     // print();
-
-    rc=insert_into_leaf_after_split(leaf_page,key,rid);
+    //类似，但要分裂了
+    //add bzb [unique index] 20211103:b
+    rc=insert_into_leaf_after_split(leaf_page,key,rid,is_unique_index);
+    //20211103:e
     free(key);
     return SUCCESS;
   }
 }
+//add bzb [multi index] 20211107:b
+RC BplusTreeHandler::insert_multi_entry(const char *pkey, FieldMeta *field_meta_multi, const RID *rid, int is_unique_index, int field_count) {
+//这里的pkey指向一个完整的record+field_mate.offset
+  LOG_INFO("I AM IN INSERT_MULTI_ENTRY");
 
+  RC rc;
+  PageNum leaf_page;
+  BPPageHandle page_handle;
+  char *pdata,*key;
+  IndexNode *leaf;
+  if(nullptr == disk_buffer_pool_){
+    return RC::RECORD_CLOSED;
+  }
+  key=(char *)malloc(file_header_.key_length);//key_length：(a int)=12, (a int, b int)=12, (a char)=12？？？？？这玩意儿是个啥？
+  if(key == nullptr){
+    LOG_ERROR("Failed to alloc memory for key. size=%d", file_header_.key_length);
+    return RC::NOMEM;
+  }
+  int multi_attr_offset_pre = 0;
+  for (int i = 0; i < field_count; i++) {
+    memcpy(key+multi_attr_offset_pre, pkey+field_meta_multi[i].offset(), file_header_.multi_attr_length[i]);
+    //LOG_INFO("i = %d, offset = %d, name = %s",i,field_meta_multi[i].offset(),field_meta_multi[i].name());
+    multi_attr_offset_pre += file_header_.multi_attr_length[i];
+  }
+  //LOG_INFO("multi_attr_length = %d", multi_attr_length);
+  //memcpy(key,pkey,file_header_.attr_length);
+  //memcpy(key,pkey,multi_attr_length); //从pkey的起始位置开始，拷贝attr_length个字节到key指向的地址
+  memcpy(key + multi_attr_offset_pre, rid, sizeof(*rid));
+  //key = record->data + RID  现在，key里面存储了 数据+对应的RID
+  //rc= find_leaf(key, &leaf_page);//根据pkey对应的值，返回一个合适的leaf_page的page_num
+  rc= find_leaf_multi(key, &leaf_page);//根据pkey对应的值，返回一个合适的leaf_page的page_num
+  /*
+  multi_attr_offset_pre = 0;
+  for (int i = 0; i < field_count; i++) {
+    int i1;
+    i1 = *(int *) (key + multi_attr_offset_pre);
+    multi_attr_offset_pre += file_header_.multi_attr_length[i];
+    LOG_INFO("i = %d, data = %d",i,i1);
+    LOG_INFO("multi_attr_offset_pre = %d", multi_attr_offset_pre);
+  }
+  free(key);
+  */
+  
+  if(rc!=SUCCESS){
+    free(key);
+    return rc;
+  }
+
+  rc = disk_buffer_pool_->get_this_page(file_id_, leaf_page, &page_handle);
+  if(rc!=SUCCESS){
+    free(key);
+    return rc;
+  }
+
+  rc = disk_buffer_pool_->get_data(&page_handle, &pdata);
+  if(rc!=SUCCESS){
+    free(key);
+    return rc;
+  }
+  leaf=(IndexNode *)(pdata+sizeof(IndexFileHeader));
+
+  if(leaf->key_num<file_header_.order-1){ //判断是否满足分裂条件
+    rc = disk_buffer_pool_->unpin_page(&page_handle);
+    if(rc!=SUCCESS){
+      free(key);
+      return rc;
+    }
+    //根据key的值，找到索引文件的对应位置，插入，并令key_num++
+    //rc=insert_into_leaf(leaf_page,key,rid,is_unique_index);
+    rc=insert_into_leaf_multi(leaf_page,key,rid,is_unique_index);
+    
+    if(rc!=SUCCESS){
+      free(key);
+      return rc;
+    }
+    free(key);
+    return SUCCESS;
+  }
+  else{
+    rc = disk_buffer_pool_->unpin_page(&page_handle);
+    if(rc!=SUCCESS){
+      free(key);
+      return rc;
+    }
+
+    // print();
+    //类似，但要分裂了
+    //rc=insert_into_leaf_after_split(leaf_page,key,rid,is_unique_index);
+    rc=insert_into_leaf_after_split_multi(leaf_page,key,rid,is_unique_index);
+    
+    free(key);
+    return SUCCESS;
+  }
+  
+  return RC::SUCCESS;
+}
+//20211107:e
 RC BplusTreeHandler::get_entry(const char *pkey,RID *rid) {
   RC rc;
   PageNum leaf_page;
@@ -1819,7 +2487,6 @@ bool BplusTreeScanner::satisfy_condition(const char *pkey) {
       f1=*(float *)pkey;
       f2=*(float *)value_;
       break;
-    case DATES://add zjx[date]b:20211027
     case CHARS:
       s1=pkey;
       s2=value_;
@@ -1840,7 +2507,6 @@ bool BplusTreeScanner::satisfy_condition(const char *pkey) {
         case FLOATS:
           flag= 0 == float_compare(f1, f2);
           break;
-        case DATES://add zjx[date]b:20211027
         case CHARS:
           flag=(strncmp(s1,s2,attr_length)==0);
           break;
@@ -1856,7 +2522,6 @@ bool BplusTreeScanner::satisfy_condition(const char *pkey) {
         case FLOATS:
           flag=(f1<f2);
           break;
-        case DATES://add zjx[date]b:20211027
         case CHARS:
           flag=(strncmp(s1,s2,attr_length)<0);
           break;
@@ -1872,7 +2537,6 @@ bool BplusTreeScanner::satisfy_condition(const char *pkey) {
         case FLOATS:
           flag=(f1>f2);
           break;
-        case DATES://add zjx[date]b:20211027
         case CHARS:
           flag=(strncmp(s1,s2,attr_length)>0);
           break;
@@ -1888,7 +2552,6 @@ bool BplusTreeScanner::satisfy_condition(const char *pkey) {
         case FLOATS:
           flag=(f1<=f2);
           break;
-        case DATES://add zjx[date]b:20211027
         case CHARS:
           flag=(strncmp(s1,s2,attr_length)<=0);
           break;
@@ -1904,7 +2567,6 @@ bool BplusTreeScanner::satisfy_condition(const char *pkey) {
         case FLOATS:
           flag=(f1>=f2);
           break;
-        case DATES://add zjx[date]b:20211027
         case CHARS:
           flag=(strncmp(s1,s2,attr_length)>=0);
           break;
@@ -1920,7 +2582,6 @@ bool BplusTreeScanner::satisfy_condition(const char *pkey) {
         case FLOATS:
           flag= 0 != float_compare(f1, f2);
           break;
-        case DATES://add zjx[date]b:20211027
         case CHARS:
           flag=(strncmp(s1,s2,attr_length)!=0);
           break;

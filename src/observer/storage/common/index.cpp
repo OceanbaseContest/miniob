@@ -17,5 +17,18 @@ See the Mulan PSL v2 for more details. */
 RC Index::init(const IndexMeta &index_meta, const FieldMeta &field_meta) {
   index_meta_ = index_meta;
   field_meta_ = field_meta;
+  field_count_ = 1;
   return RC::SUCCESS;
 }
+
+//add bzb [multi index] 20211107:b
+RC Index::init_multi(const IndexMeta &index_meta, const FieldMeta *field_meta[], int field_count) {
+  index_meta_ = index_meta;
+  field_count_ = field_count;
+  //LOG_INFO("field_count_ = %d", field_count_);
+  for(int i = 0; i < field_count_; i++) {
+    field_meta_multi_[i] = *field_meta[i];
+  }
+  return RC::SUCCESS;
+}
+//20211107:e

@@ -32,16 +32,10 @@ public:
   SessionEvent * session_event() const {
     return session_event_;
   }
-  //add zjx[select]b:20211023
-  SQLStageEvent * next_sql_event() {return next_sqlstageevent_;}
-  
 private:
   SessionEvent *session_event_;
   std::string & sql_;
   // void *context_;
-  //add zjx[select]b:20211023
-  //存在多个sql语句时，比如uniion的情况，需要多个SQLStageEvent保存对应的TupleSet
-  SQLStageEvent * next_sqlstageevent_;
 };
 
 #endif //__SRC_OBSERVER_SQL_EVENT_SQLEVENT_H__

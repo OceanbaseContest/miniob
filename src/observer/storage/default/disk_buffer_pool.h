@@ -33,7 +33,9 @@ typedef int PageNum;
 #define BP_PAGE_SIZE (1 << 12)
 #define BP_PAGE_DATA_SIZE (BP_PAGE_SIZE - sizeof(PageNum))
 #define BP_FILE_SUB_HDR_SIZE (sizeof(BPFileSubHeader))
-#define BP_BUFFER_SIZE 1000
+//bzb mod 1031
+//#define BP_BUFFER_SIZE 4
+#define BP_BUFFER_SIZE 50
 #define MAX_OPEN_FILE 1024
 
 typedef struct {
@@ -46,7 +48,6 @@ typedef struct {
   PageNum page_count;
   int allocated_pages;
 } BPFileSubHeader;
-
 //add bzb [LRU+LFU] 20211031:b
 typedef struct {
   bool dirty;
@@ -57,7 +58,6 @@ typedef struct {
   unsigned int LFU_count;
 } Frame;
 //20211031:e
-
 typedef struct {
   bool open;
   Frame *frame;
@@ -189,6 +189,7 @@ public:
   //RC increase_LFU_count(BPPageHandle *page_handle);
   //20211031:e
 
+
   /**
    * 此函数用于解除pageHandle对应页面的驻留缓冲区限制。
    * 在调用GetThisPage或AllocatePage函数将一个页面读入缓冲区后，
@@ -196,10 +197,6 @@ public:
    * 因此在该页面使用完之后应调用此函数解除该限制，使得该页面此后可以正常地被淘汰出缓冲区
    */
   RC unpin_page(BPPageHandle *page_handle);
-
-  //add bzb [LRU+LFU] 20211031:b
-  RC unpin_page_to_0(BPPageHandle *page_handle);
-  //20211031:e
 
   /**
    * 获取文件的总页数
