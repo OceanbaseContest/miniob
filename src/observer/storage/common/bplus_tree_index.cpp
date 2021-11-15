@@ -29,32 +29,12 @@ RC BplusTreeIndex::create(const char *file_name, const IndexMeta &index_meta, co
     return rc;
   }
 
-  //为写索引创建缓存
   rc = index_handler_.create(file_name, field_meta.type(), field_meta.len());
   if (RC::SUCCESS == rc) {
     inited_ = true;
   }
   return rc;
 }
-
-//add bzb [multi index] 20211107:b
-RC BplusTreeIndex::create_multi(const char *file_name, const IndexMeta &index_meta, const FieldMeta *field_meta[], int field_count) {
-  if (inited_) {
-    return RC::RECORD_OPENNED;
-  }
-  RC rc = Index::init_multi(index_meta, field_meta, field_count);
-  //RC rc = Index::init(index_meta, field_meta);
-  if (rc != RC::SUCCESS) {
-    return rc;
-  }
-  rc = index_handler_.create_multi(file_name, field_meta, field_count);
-  //rc = index_handler_.create(file_name, field_meta.type(), field_meta.len());
-  if (RC::SUCCESS == rc) {
-    inited_ = true;
-  }
-  return RC::SUCCESS;
-}
-//20211107:e
 
 RC BplusTreeIndex::open(const char *file_name, const IndexMeta &index_meta, const FieldMeta &field_meta) {
   if (inited_) {
@@ -80,18 +60,9 @@ RC BplusTreeIndex::close() {
   return RC::SUCCESS;
 }
 
-//add bzb [unique index] 20211103:b
-RC BplusTreeIndex::insert_entry(const char *record, const RID *rid, int is_unique_index) {
-  return index_handler_.insert_entry(record + field_meta_.offset(), rid, is_unique_index);
+RC BplusTreeIndex::insert_entry(const char *record, const RID *rid) {
+  return index_handler_.insert_entry(record + field_meta_.offset(), rid);
 }
-//20211103:e
-
-//add bzb [multi index] 20211107:b
-RC BplusTreeIndex::insert_multi_entry(const char *record, const RID *rid, int is_unique_index) {
-  LOG_INFO("I AM IN BP_INDEX INSERT MULTI");
-  return index_handler_.insert_multi_entry(record, field_meta_multi_, rid, is_unique_index, field_count_);
-}
-//20211107:e
 
 RC BplusTreeIndex::delete_entry(const char *record, const RID *rid) {
   return index_handler_.delete_entry(record + field_meta_.offset(), rid);

@@ -22,9 +22,6 @@ See the Mulan PSL v2 for more details. */
 static const Json::StaticString FIELD_TABLE_NAME("table_name");
 static const Json::StaticString FIELD_FIELDS("fields");
 static const Json::StaticString FIELD_INDEXES("indexes");
-//add bzb [multi index] 20211107:b
-static const Json::StaticString MULTI_FIELD_INDEXES("multi_indexes");
-//20211107:e
 
 std::vector<FieldMeta> TableMeta::sys_fields_;
 
@@ -32,9 +29,6 @@ TableMeta::TableMeta(const TableMeta &other) :
         name_(other.name_),
         fields_(other.fields_),
         indexes_(other.indexes_),
-        //add bzb [multi index] 20211107:b
-        multi_indexes_(other.multi_indexes_),
-        //20211107:e
         record_size_(other.record_size_){
 }
 
@@ -42,9 +36,6 @@ void TableMeta::swap(TableMeta &other) noexcept{
   name_.swap(other.name_);
   fields_.swap(other.fields_);
   indexes_.swap(other.indexes_);
-  //add bzb [multi index] 20211107:b
-  multi_indexes_.swap(other.multi_indexes_);
-  //20211107:e
   std::swap(record_size_, other.record_size_);
 }
 
@@ -110,14 +101,6 @@ RC TableMeta::add_index(const IndexMeta &index) {
   return RC::SUCCESS;
 }
 
-//add bzb [multi index] 20211107:b
-RC TableMeta::add_multi_index(const IndexMeta &index) {
-  multi_indexes_.push_back(index);
-  //LOG_INFO("index.name() = %s, name = %s", index.name(), name);
-  return RC::SUCCESS;
-}
-//20211107:e  
-
 const char *TableMeta::name() const {
   return name_.c_str();
 }
@@ -165,17 +148,7 @@ const IndexMeta * TableMeta::index(const char *name) const {
   }
   return nullptr;
 }
-//add bzb [multi index] 20211107:b
-const IndexMeta * TableMeta::multi_index(const char *name) const {
-  for (const IndexMeta &index : multi_indexes_) {
-    LOG_INFO("index.name() = %s, name = %s", index.name(), name);
-    if (0 == strcmp(index.name(), name)) {
-      return &index;
-    }
-  }
-  return nullptr;
-}
-//20211107:e
+
 const IndexMeta * TableMeta::find_index_by_field(const char *field) const {
   for (const IndexMeta &index : indexes_) {
     if (0 == strcmp(index.field(), field)) {
@@ -184,23 +157,6 @@ const IndexMeta * TableMeta::find_index_by_field(const char *field) const {
   }
   return nullptr;
 }
-
-//add bzb [multi index] 20211107:b
-const IndexMeta * TableMeta::find_multi_index_by_AttrName_and_AttrCount(char* const*attribute_name, size_t attribute_count) const {
-  for (const IndexMeta &index : multi_indexes_) {
-    if (&index == nullptr) {
-      LOG_INFO("NONONO");
-      return nullptr;
-    }
-    else {
-      LOG_INFO("YYY");
-    }
-    if (1 == index.equal_multi_field(attribute_name, attribute_count)) {
-      return &index;
-    }
-  }
-}
-//20211107:e
 
 const IndexMeta * TableMeta::index(int i ) const {
   return &indexes_[i];
@@ -235,16 +191,6 @@ int TableMeta::serialize(std::ostream &ss) const {
     indexes_value.append(std::move(index_value));
   }
   table_value[FIELD_INDEXES] = std::move(indexes_value);
-
-  //add bzb [multi index] 20211107:b
-  Json::Value multi_indexes_value;
-  for (const auto &index : multi_indexes_) {
-    Json::Value index_value;
-    index.to_json(index_value);
-    multi_indexes_value.append(std::move(index_value));
-  }
-  table_value[MULTI_FIELD_INDEXES] = std::move(multi_indexes_value);
-  //20211107:e
 
   Json::StreamWriterBuilder builder;
   Json::StreamWriter *writer = builder.newStreamWriter();
@@ -328,29 +274,6 @@ int TableMeta::deserialize(std::istream &is) {
     indexes_.swap(indexes);
   }
 
-  //add bzb [multi index] 20211107:b
-  const Json::Value &multi_indexes_value = table_value[MULTI_FIELD_INDEXES];
-  if (!multi_indexes_value.empty()) {
-    if (!multi_indexes_value.isArray()) {
-      LOG_ERROR("Invalid table meta. indexes is not array, json value=%s", fields_value.toStyledString().c_str());
-      return -1;
-    }
-    const int multi_index_num = multi_indexes_value.size();
-    std::vector<IndexMeta> multi_indexes(multi_index_num);
-    for (int i = 0; i < multi_index_num; i++) {
-      IndexMeta &index = multi_indexes[i];
-
-      const Json::Value &index_value = multi_indexes_value[i];
-      rc = IndexMeta::from_json(*this, index_value, index);
-      if (rc != RC::SUCCESS) {
-        LOG_ERROR("Failed to deserialize table meta. table name=%s", table_name.c_str());
-        return -1;
-      }
-    }
-    multi_indexes_.swap(multi_indexes);
-  }
-  //20211107:e
-
   return (int)(is.tellg() - old_pos);
 }
 
@@ -365,13 +288,6 @@ void TableMeta::drop_all_index_file(std::string base_dir, std::string tb_name) {
     std::remove(index_file.c_str());
     LOG_INFO("drop index_file = %s", index_file.c_str());
   }
-  //add bzb [multi index] 20211107:b
-  for (const IndexMeta &index : multi_indexes_) {
-    std::string index_file = base_dir + "/" + tb_name + "-" + index.name() + ".index";
-    std::remove(index_file.c_str());
-    LOG_INFO("drop multi_index_file = %s", index_file.c_str());
-  }
-  //20211107:e
 }
 //20211022:e
 

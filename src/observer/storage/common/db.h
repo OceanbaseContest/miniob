@@ -32,7 +32,7 @@ public:
   RC init(const char *name, const char *dbpath);
 
   RC create_table(const char *table_name, int attribute_count, const AttrInfo *attributes);
-  
+
   //add bzb [drop table] 20211022:b
   RC drop_table(const char *table_name);
   //20211022:e

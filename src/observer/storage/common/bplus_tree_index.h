@@ -24,19 +24,10 @@ public:
   virtual ~BplusTreeIndex() noexcept;
 
   RC create(const char *file_name, const IndexMeta &index_meta, const FieldMeta &field_meta);
-//add bzb [multi index] 20211107:b
-  RC create_multi(const char *file_name, const IndexMeta &index_meta, const FieldMeta *field_meta[], int field_count);
-//20211107:e
   RC open(const char *file_name, const IndexMeta &index_meta, const FieldMeta &field_meta);
   RC close();
-  //RC insert_entry(const char *record, const RID *rid) override;
-  //add bzb [unique index] 20211103:b
-  RC insert_entry(const char *record, const RID *rid, int is_unique_index) override;
-  //20211103:e
 
-  //add bzb [multi index] 20211107:b
-  RC insert_multi_entry(const char *record, const RID *rid, int is_unique_index) override;
-  //20211107:e
+  RC insert_entry(const char *record, const RID *rid) override;
   RC delete_entry(const char *record, const RID *rid) override;
 
   IndexScanner *create_scanner(CompOp comp_op, const char *value) override;

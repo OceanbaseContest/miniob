@@ -44,3 +44,18 @@ int SessionEvent::get_response_len() const { return response_.size(); }
 char *SessionEvent::get_request_buf() { return client_->buf; }
 
 int SessionEvent::get_request_buf_len() { return SOCKET_BUFFER_SIZE; }
+
+//add zjx[select]b:20211023
+void SessionEvent::set_tupleset(TupleSet* tuple_sets){ 
+  tuple_sets_ = std::move(*tuple_sets); 
+}
+
+void SessionEvent::get_tupleset(TupleSet &tuple_sets) { 
+  tuple_sets = std::move(tuple_sets_); 
+}
+
+//对成员TupleSet对象进行打印
+void SessionEvent::print_to_stream(std::stringstream &ss){
+  tuple_sets_.print(ss);
+  set_response(ss.str());
+}

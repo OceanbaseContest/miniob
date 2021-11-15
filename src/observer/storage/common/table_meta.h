@@ -36,10 +36,6 @@ public:
 
   RC add_index(const IndexMeta &index);
 
-  //add bzb [multi index] 20211107:b
-  RC add_multi_index(const IndexMeta &index);
-  //20211107:e  
-
 public:
   const char * name() const;
   const FieldMeta * trx_field() const;
@@ -50,13 +46,7 @@ public:
   int sys_field_num() const;
 
   const IndexMeta * index(const char *name) const;
-  //add bzb [multi index] 20211107:b
-  const IndexMeta * multi_index(const char *name) const;
-  //20211107:e
   const IndexMeta * find_index_by_field(const char *field) const;
-  //add bzb [multi index] 20211107:b
-  const IndexMeta * find_multi_index_by_AttrName_and_AttrCount(char* const*attribute_name, size_t attribute_count) const;
-  //20211107:e
   const IndexMeta * index(int i) const;
   int index_num() const;
 
@@ -78,9 +68,6 @@ private:
   std::string   name_;
   std::vector<FieldMeta>  fields_; // 包含sys_fields
   std::vector<IndexMeta>  indexes_;
-  //add bzb [multi index] 20211107:b
-  std::vector<IndexMeta>  multi_indexes_;
-  //20211107:e
 
   int  record_size_ = 0;
 

@@ -15,7 +15,9 @@ See the Mulan PSL v2 for more details. */
 #ifndef __OBSERVER_HANDLER_HANDLER_H__
 #define __OBSERVER_HANDLER_HANDLER_H__
 
-#define MAX_NUM 20
+// add szj [insert multi values]20211029:b
+#define MAX_NUM 50
+// add:e
 #define MAX_REL_NAME 20
 #define MAX_ATTR_NAME 20
 #define MAX_ERROR_MESSAGE 20

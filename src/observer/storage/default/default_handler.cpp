@@ -137,43 +137,29 @@ RC DefaultHandler::drop_table(const char *dbname, const char *relation_name) {
 }
 //20211022:e
 
-//add bzb [unique index] 20211103:b
-//add bzb [multi index] 20211107:b
-RC DefaultHandler::create_index(Trx *trx, const char *dbname, const char *relation_name, const char *index_name, char* const* attribute_name, const int is_unique_index, size_t attribute_count) {
+RC DefaultHandler::create_index(Trx *trx, const char *dbname, const char *relation_name, const char *index_name, const char *attribute_name) {
   Table *table = find_table(dbname, relation_name);
   if (nullptr == table) {
     return RC::SCHEMA_TABLE_NOT_EXIST;
   }
-  LOG_INFO("is_unique_index = %d", is_unique_index);
-  if (attribute_count == 1) {
-    return table->create_index(trx, index_name, attribute_name[0], is_unique_index);
-  }
-  else {
-    return table->create_multi_index(trx, index_name, attribute_name, is_unique_index, attribute_count);
-  }
+  return table->create_index(trx, index_name, attribute_name);
 }
-//20211107:e
-//20211103:e
 
-//add bzb [drop index] 20211105:b
-RC DefaultHandler::drop_index(Trx *trx, const char *dbname, const char *relation_name, const char *index_name, const char *attribute_name) {
+RC DefaultHandler::drop_index(Trx *trx, const char *dbname, const char *relation_name, const char *index_name) {
+
+  return RC::GENERIC_ERROR;
+}
+// add szj [insert multi values]20211029:b
+RC DefaultHandler::insert_record(Trx *trx, const char *dbname, const char *relation_name, int value_num, const Value *values, int record_num) {
   Table *table = find_table(dbname, relation_name);
   if (nullptr == table) {
     return RC::SCHEMA_TABLE_NOT_EXIST;
   }
-  LOG_INFO("drop_index_bzb_1!!!,   dbname = %s, relation_name = %s, index_name = %s, attribute_name = %s", dbname, relation_name, index_name, attribute_name);
-  return table->drop_index(trx, index_name, attribute_name, dbname);
+  LOG_INFO("find table success, i'm in insert_record!");
+  return table->insert_record(trx, value_num, values, record_num);
 }
-//20211105:e
+// add:e
 
-RC DefaultHandler::insert_record(Trx *trx, const char *dbname, const char *relation_name, int value_num, const Value *values) {
-  Table *table = find_table(dbname, relation_name);
-  if (nullptr == table) {
-    return RC::SCHEMA_TABLE_NOT_EXIST;
-  }
-
-  return table->insert_record(trx, value_num, values);
-}
 RC DefaultHandler::delete_record(Trx *trx, const char *dbname, const char *relation_name,
                                  int condition_num, const Condition *conditions, int *deleted_count) {
   Table *table = find_table(dbname, relation_name);
@@ -196,7 +182,16 @@ RC DefaultHandler::update_record(Trx *trx, const char *dbname, const char *relat
     return RC::SCHEMA_TABLE_NOT_EXIST;
   }
 
-  return table->update_record(trx, attribute_name, value, condition_num, conditions, updated_count);
+  // add szj [update sql execute]20211024:b
+  CompositeConditionFilter condition_filter;
+  RC rc = condition_filter.init(*table, conditions, condition_num);
+  if (rc != RC::SUCCESS) {
+    return rc;
+  }
+  
+  // 修改update函数接口
+  return table->update_record(trx, attribute_name, value, &condition_filter, updated_count);
+  // add:e
 }
 
 Db *DefaultHandler::find_db(const char *dbname) const {

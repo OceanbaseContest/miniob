@@ -28,22 +28,14 @@ class Value;
 class IndexMeta {
 public:
   IndexMeta() = default;
-  //add bzb [unique index] 20211103:b
-  RC init(const char *name, const FieldMeta &field, const int is_unique_index);
-  //20211103:e
-  //add bzb [multi index] 20211107:b
-  RC init_for_multi(const char *name, const FieldMeta *field[], const int is_unique_index, size_t attribute_count);
-  //20211107:e
+
+  RC init(const char *name, const FieldMeta &field);
+
 public:
   const char *name() const;
   const char *field() const;
-  //add bzb [multi index] 20211107:b
-  //0 不匹配， 1 匹配
-  int equal_multi_field(char* const* attribute_name, size_t attribute_count) const;
-  //20211107:e
 
   void desc(std::ostream &os) const;
-  int get_is_unique_index();
 public:
   void to_json(Json::Value &json_value) const;
   static RC from_json(const TableMeta &table, const Json::Value &json_value, IndexMeta &index);
@@ -51,12 +43,5 @@ public:
 private:
   std::string       name_;
   std::string       field_;
-  //add bzb [unique index] 20211103:b
-  int is_unique_index_;
-  //20211103:e
-  //add bzb [multi index] 20211107:b
-  size_t attribute_count_;
-  std::string       multi_field_[50];
-  //20211107:e
 };
 #endif // __OBSERVER_STORAGE_COMMON_INDEX_META_H__

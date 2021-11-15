@@ -164,7 +164,10 @@ void DefaultStorageStage::handle_event(StageEvent *event) {
   case SCF_INSERT: { // insert into
       const Inserts &inserts = sql->sstr.insertion;
       const char *table_name = inserts.relation_name;
-      rc = handler_->insert_record(current_trx, current_db, table_name, inserts.value_num, inserts.values);
+      // add szj [insert multi values]20211029:b
+      LOG_INFO("Watch Out the multi insert sql：record num is %d!!!!!!",inserts.record_num);
+      rc = handler_->insert_record(current_trx, current_db, table_name, inserts.value_num, inserts.values, inserts.record_num);
+      // add:e
       snprintf(response, sizeof(response), "%s\n", rc == RC::SUCCESS ? "SUCCESS" : "FAILURE");
     }
     break;
@@ -201,28 +204,14 @@ void DefaultStorageStage::handle_event(StageEvent *event) {
     }
     break;
   //20211022:e
-
-  //add bzb [unique index] 20211103:b
-  //add bzb [multi index] 20211107:b
   case SCF_CREATE_INDEX: {
       const CreateIndex &create_index = sql->sstr.create_index;
       rc = handler_->create_index(current_trx, current_db, create_index.relation_name, 
-                                  create_index.index_name, create_index.attribute_name, create_index.is_unique_index, create_index.attribute_count);
+                                  create_index.index_name, create_index.attribute_name);
       snprintf(response, sizeof(response), "%s\n", rc == RC::SUCCESS ? "SUCCESS" : "FAILURE");
     }
     break;
-  //20211107:e
-  //20211103:e
-  
-  //add bzb [drop index] 20211105:b
-  case SCF_DROP_INDEX:  {
-      const DropIndex &drop_index = sql->sstr.drop_index;
-      //(Trx *trx, const char *dbname, const char *relation_name, const char *index_name)
-      rc = handler_->drop_index(current_trx, current_db, drop_index.relation_name, drop_index.index_name, drop_index.attribute_name);
-      snprintf(response, sizeof(response), "%s\n", rc == RC::SUCCESS ? "SUCCESS" : "FAILURE");
-    }
-    break;
-  //20211105:e
+
   case SCF_SHOW_TABLES: {
       Db *db = handler_->find_db(current_db);
       if (nullptr == db) {
@@ -357,6 +346,10 @@ RC insert_record_from_file(Table *table, std::vector<std::string> &file_values,
         value_init_string(&record_values[i], file_value.c_str());
       }
       break;
+      case DATES: {//add zjx[date]b:20211027
+        value_init_date(&record_values[i], file_value.c_str());
+      }
+      break;
       default: {
         errmsg << "Unsupported field type to loading: " << field->type();
         rc = RC::SCHEMA_FIELD_TYPE_MISMATCH;
@@ -366,7 +359,9 @@ RC insert_record_from_file(Table *table, std::vector<std::string> &file_values,
   }
 
   if (RC::SUCCESS == rc) {
-    rc = table->insert_record(nullptr, field_num, record_values.data());
+    // add szj [insert multi values]20211029:b
+    rc = table->insert_record(nullptr, field_num, record_values.data(), 1);
+    // add:e
     if (rc != RC::SUCCESS) {
       errmsg << "insert failed.";
     }

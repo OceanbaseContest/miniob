@@ -41,40 +41,20 @@ public:
   const IndexMeta &index_meta() const {
     return index_meta_;
   }
-  //add bzb [unique index] 20211103:b
-  virtual RC insert_entry(const char *record, const RID *rid, int is_unique_key) = 0;
-  //20211103:e
 
-  //add bzb [multi index] 20211107:b
-  virtual RC insert_multi_entry(const char *record, const RID *rid, int is_unique_key) = 0;
-  //20211107:e
-
-  //virtual RC insert_entry(const char *record, const RID *rid) = 0;
+  virtual RC insert_entry(const char *record, const RID *rid) = 0;
   virtual RC delete_entry(const char *record, const RID *rid) = 0;
 
   virtual IndexScanner *create_scanner(CompOp comp_op, const char *value) = 0;
 
   virtual RC sync() = 0;
 
-  //add bzb [multi index] 20211107:b
-  int get_field_count() {
-    return field_count_;
-  }
-  //20211107:e
-
 protected:
   RC init(const IndexMeta &index_meta, const FieldMeta &field_meta);
-//add bzb [multi index] 20211107:b
-  RC init_multi(const IndexMeta &index_meta, const FieldMeta *field_meta[], int field_count);
-//20211107:e
 
 protected:
   IndexMeta   index_meta_;
   FieldMeta   field_meta_;    /// 当前实现仅考虑一个字段的索引
-  //add bzb [multi index] 20211107:b
-  FieldMeta   field_meta_multi_[50]; //多列索引存字段
-  int   field_count_; //字段数
-  //20211107:e
 };
 
 class IndexScanner {

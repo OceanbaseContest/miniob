@@ -198,11 +198,12 @@ RC DiskBufferPool::get_this_page(int file_id, PageNum page_num, BPPageHandle *pa
   }
 
   BPFileHandle *file_handle = open_list_[file_id];
+  LOG_INFO("IN GET PAGE");
   if ((tmp = check_page_num(page_num, file_handle)) != RC::SUCCESS) {
     LOG_ERROR("Failed to load page %s:%d, due to invalid pageNum.", file_handle->file_name, page_num);
     return tmp;
   }
-
+  LOG_INFO("OUT GET PAGE");
   for (int i = 0; i < BP_BUFFER_SIZE; i++) {
     if (!bp_manager_.allocated[i])
       continue;
@@ -277,6 +278,7 @@ RC DiskBufferPool::allocate_page(int file_id, BPPageHandle *page_handle)
   }
 
   PageNum page_num = file_handle->file_sub_header->page_count;
+  LOG_INFO("page_num = %d", page_num);
   file_handle->file_sub_header->allocated_pages++;
   file_handle->file_sub_header->page_count++;
 
@@ -289,8 +291,7 @@ RC DiskBufferPool::allocate_page(int file_id, BPPageHandle *page_handle)
   page_handle->frame->file_desc = file_handle->file_desc;
   page_handle->frame->pin_count = 1;
   page_handle->frame->acc_time = current_time();
-  LOG_INFO("current_time = %ld", page_handle->frame->acc_time);
-  //memset(&(page_handle->frame->page), 0, sizeof(Page)); 这块儿会把file_handle清了，不知道为啥，先注释了，不太影响
+  memset(&(page_handle->frame->page), 0, sizeof(Page));
   page_handle->frame->page.page_num = file_handle->file_sub_header->page_count - 1;
   //add bzb [LRU+LFU] 20211031:b
   page_handle->frame->LFU_count = 0;
@@ -347,6 +348,14 @@ RC DiskBufferPool::unpin_page(BPPageHandle *page_handle)
   page_handle->frame->pin_count--;
   return RC::SUCCESS;
 }
+
+//add bzb [LRU+LFU] 20211031:b
+RC DiskBufferPool::unpin_page_to_0(BPPageHandle *page_handle) {
+  page_handle->open = false;
+  page_handle->frame->pin_count = 0;
+  return RC::SUCCESS;
+}
+//20211031:e
 
 /**
  * dispose_page will delete the data of the page of pageNum
@@ -452,7 +461,6 @@ RC DiskBufferPool::force_page(BPFileHandle *file_handle, PageNum page_num)
   }
   return RC::SUCCESS;
 }
-
 RC DiskBufferPool::flush_all_pages(int file_id)
 {
   RC rc = check_file_id(file_id);
@@ -535,20 +543,29 @@ RC DiskBufferPool::allocate_block(Frame **buffer)
       min = i;
       mintime = bp_manager_.frame[i].acc_time;
       min_LFU_count = bp_manager_.frame[i].LFU_count;
+      LOG_INFO("IN FLAG!!!!");
+      LOG_INFO("min = %d", min);
+      LOG_INFO("bp_manager_.frame[i].pin_count = %d", bp_manager_.frame[i].pin_count);
+      LOG_INFO("min_LFU_count = %d", min_LFU_count);
+      LOG_INFO("bp_manager_.frame[i].acc_time = %d", bp_manager_.frame[i].acc_time);
     }
+    LOG_INFO("OUT FLAG!!!!");
     if (bp_manager_.frame[i].acc_time < mintime) {
       min = i;
       mintime = bp_manager_.frame[i].acc_time;
       min_LFU_count = bp_manager_.frame[i].LFU_count;
-      LOG_INFO("EXECUTE IN LRU_LFU_count < minimum, min = %d", min);
+      LOG_INFO("EXECUTE IN  < minimum, min = %d", min);
     }
     else if (bp_manager_.frame[i].acc_time == mintime) {
       if (bp_manager_.frame[i].LFU_count < min_LFU_count) {
         min = i;
         mintime = bp_manager_.frame[i].acc_time;
         min_LFU_count = bp_manager_.frame[i].LFU_count;
-        LOG_INFO("EXECUTE IN LRU_LFU_count == minimum, min = %d", min);
+        LOG_INFO("EXECUTE IN  == minimum, min = %d", min);
       }
+    }
+    else {
+      LOG_INFO("HUI_QI！！！！！");
     }
   }
   //20211031:e
@@ -556,7 +573,7 @@ RC DiskBufferPool::allocate_block(Frame **buffer)
     LOG_ERROR("All pages have been used and pinned.");
     return RC::NOMEM;
   }
-
+  LOG_INFO("success min = %d", min);
   if (bp_manager_.frame[min].dirty) {
     RC rc = flush_block(&(bp_manager_.frame[min]));
     if (rc != RC::SUCCESS) {

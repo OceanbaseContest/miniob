@@ -172,6 +172,12 @@ enum RCAuth {
   USER = 1,
 };
 
+//add zjx[select]b:20211022
+enum RCSelect {
+  JOINNODE = 1,
+};
+//e:20211022
+
 enum RC {
 
   SUCCESS = 0, /* Successful result */
@@ -206,6 +212,9 @@ enum RC {
   FORMAT,        /* Not used */
   RANGE,         /* 2nd parameter to bind out of range */
   NOTADB,        /* File opened that is not a database file */
+  //add zjx[select]b:20211022
+  EXECUTE,       /*sql execution*/
+  //e:20211022
   NOTICE = 100,  /* Notifications from log() */
 
   /* buffer pool part */
@@ -344,6 +353,14 @@ enum RC {
 
   /* auth part*/
   AUTH_USER = (AUTH | (RCAuth::USER << 8)),
+
+  //add zjx[select]b:20211022
+  JOINNODE_ERROR = (EXECUTE |(RCSelect::JOINNODE << 8)),
+  //e:20211022
+
+  //add zjx[order by]b:20211103
+  CONDITION_ERROR = (EXECUTE |(RCSchema::FIELD_NAME_ILLEGAL << 8)),
+  //e:20211103
 };
 
 extern const char *strrc(RC rc);
