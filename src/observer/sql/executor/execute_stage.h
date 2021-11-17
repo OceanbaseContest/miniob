@@ -4,7 +4,7 @@
  * @Author: MoonKnight
  * @Date: 2021-10-28 20:56:08
  * @LastEditors: MoonKnight
- * @LastEditTime: 2021-11-14 16:38:10
+ * @LastEditTime: 2021-11-17 21:09:13
  */
 /* Copyright (c) 2021 Xie Meiyi(xiemeiyi@hust.edu.cn) and OceanBase and/or its affiliates. All rights reserved.
 miniob is licensed under Mulan PSL v2.
@@ -78,9 +78,16 @@ protected:
   //20211022:e
 private:
   RC load_tupleset(JoinNode* &node, std::map<std::string, TupleSet*>* name_tupleset_map);
-  RC do_check_condition(Selects &selects, const char* db); //add zjx[check]b:20211114
-  RC do_select_attr_check_condition(Selects &selects, const char* db);//add zjx[check]b:20211114
+  RC do_check(Selects &selects, const char* db, SessionEvent *&session_event); //add zjx[check]b:20211114
+  RC do_select_attr_check(Selects &selects, const char* db, SessionEvent *&session_event);//add zjx[check]b:20211116
+  RC do_where_condition_check(Selects &selects, const char* db);//add zjx[check]b:20211114
   RC check_and_fix(Selects &selects, const char* db, RelAttr &left_attr);//add zjx[select]b:20211114
+  //add zjx[join]b:20211110
+  RC do_join_condition_check(Selects &selects, const char* db);
+  RC do_joinnode_condition_check(JoinNode* &joinnode ,const char* db);
+  RC do_inner_joinnode_condition_check(TupleSchema *tmp_schema, RelAttr attr, int &index);
+  bool condition_type_check( AttrType left_type, AttrType right_type, AttrType &comp_type, int l_flag = 0, int r_flag = 0);
+  bool condition_judge(Condition join_condition);
 protected:
 private:
   Stage *default_storage_stage_ = nullptr;

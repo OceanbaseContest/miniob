@@ -45,23 +45,6 @@ typedef struct {
 } ColAttr;
 // add:e
 
-//add zjx[select]b:20211028
-/**
- * @name: struct join_node
- * @msg: 算子节点
- */
-typedef struct join_node{
-  bool join_type_;              //join type:true for product,false for join
-  // JoinMethod joinmethod;     //join method
-  bool done_;                   //flag of whether the join operation has been done
-  char* table_name_;            
-  struct join_node* left_node_;
-  struct join_node* right_node_;
-  void* tupleset_;
-  void* join_condition;         //join condition
-} JoinNode;
-//e:20211028
-
 typedef enum {
   EQUAL_TO,     //"="     0
   LESS_EQUAL,   //"<="    1
@@ -91,7 +74,25 @@ typedef struct _Condition {
                        // 1时，操作符右边是属性名，0时，是属性值
   RelAttr right_attr;  // right-hand side attribute if right_is_attr = TRUE 右边的属性
   Value right_value;   // right-hand side value if right_is_attr = FALSE
+  AttrType comp_type;  //add zjx[join]b:20211117
 } Condition;
+
+//add zjx[select]b:20211028
+/**
+ * @name: struct join_node
+ * @msg: 算子节点
+ */
+typedef struct join_node{
+  bool join_type_;              //join type:true for product,false for join
+  // JoinMethod joinmethod;     //join method
+  bool done_;                   //flag of whether the join operation has been done
+  char* table_name_;            
+  struct join_node* left_node_;
+  struct join_node* right_node_;
+  void* tupleset_;
+  Condition join_condition;         //join condition
+} JoinNode;
+//e:20211028
 
 // struct of select
 typedef struct {

@@ -265,7 +265,7 @@ RC ExecuteStage::do_select(const char *db, Query *sql, SessionEvent *session_eve
 
   //检验condition
   //add zjx[check]b:20211102
-  if( (rc = do_check_condition(selects, db)) != RC::SUCCESS) {
+  if( (rc = do_check(selects, db, session_event)) != RC::SUCCESS) {
     return rc;
   }
   //e:20211102
@@ -275,7 +275,6 @@ RC ExecuteStage::do_select(const char *db, Query *sql, SessionEvent *session_eve
   for (size_t i = 0; i < selects.relation_num; i++) {
     const char *table_name = selects.relations[i];
     SelectExeNode *select_node = new SelectExeNode;
-    LOG_INFO("Get into create function!!!");
     rc = create_selection_executor(trx, selects, db, table_name, *select_node);
     if (rc != RC::SUCCESS) {
       delete select_node;
@@ -558,11 +557,22 @@ RC ExecuteStage::load_tupleset(JoinNode* &node, std::map<std::string, TupleSet*>
  * @param {Selects} &selects, {const char*} db
  * @return {*}
  */
-RC ExecuteStage::do_check_condition(Selects &selects, const char* db)  {
+RC ExecuteStage::do_check(Selects &selects, const char* db, SessionEvent * &session_event)  {
   RC rc = RC::SUCCESS;
 
-  //select_attr check
-  if ((rc = do_select_attr_check_condition(selects, db)) != RC::SUCCESS) {
+  //检查join的condition
+  //add zjx[join]b:20211104
+  if( (rc = do_join_condition_check(selects, db)) != RC::SUCCESS) {
+    return rc;
+  }
+
+  //select_attr check //add zjx[check]b:20211116
+  if ((rc = do_select_attr_check(selects, db, session_event)) != RC::SUCCESS) {
+    return rc;
+  }
+
+  //where condtion check
+  if ((rc = do_where_condition_check(selects, db)) != RC::SUCCESS) {
     return rc;
   }
 
@@ -573,6 +583,44 @@ RC ExecuteStage::do_check_condition(Selects &selects, const char* db)  {
   return rc;
 }
 
+
+//add zjx[check]b:20211116
+/**
+ * @name: 
+ * @test: test font
+ * @msg: 
+ * @param {Selects} &selects
+ * @param {char*} db
+ * @param {SessionEvent *} session_event
+ * @return {*}
+ */
+RC ExecuteStage::do_select_attr_check(Selects &selects, const char* db, SessionEvent * &session_event){
+  RC rc = RC::SUCCESS;
+  TupleSet* tmp_tupleset = new TupleSet();
+  TupleSchema* tmp_schema = new TupleSchema();
+  RelAttr tmp_relAttr;
+
+  for(size_t i = 0; i < selects.attr_num; i++){
+    if( 0 == strcmp(selects.attributes[i].relAttr.attribute_name,"*")) {
+	printf("hello\n");
+	printf("length: %d\n",((TupleSchema*)selects.joinnodes[0]->tupleset_)->fields().size());
+      tmp_schema->append(*(TupleSchema*)selects.joinnodes[0]->tupleset_);
+	continue;
+    }
+    if((rc = check_and_fix(selects, db, selects.attributes[i].relAttr)) != RC::SUCCESS) {
+      return rc;
+    }
+    tmp_relAttr = selects.attributes[i].relAttr;
+    tmp_schema->add(UNDEFINED, tmp_relAttr.relation_name, tmp_relAttr.attribute_name);
+  }
+  
+  tmp_tupleset->set_schema(*tmp_schema);
+  session_event->set_tupleset(tmp_tupleset);
+  return rc;
+}
+//e:20211116
+
+
 //add zjx[check]b:20211102
 /**
  * @name: do_check_condition
@@ -582,7 +630,7 @@ RC ExecuteStage::do_check_condition(Selects &selects, const char* db)  {
  * @param {char*} db
  * @return {*}
  */
-RC ExecuteStage::do_select_attr_check_condition(Selects &selects, const char* db){
+RC ExecuteStage::do_where_condition_check(Selects &selects, const char* db){
   RC rc = RC::SUCCESS;
 
   for(size_t i = 0; i < selects.condition_num; i++){
@@ -639,25 +687,212 @@ RC ExecuteStage::check_and_fix(Selects &selects, const char* db, RelAttr &attr) 
   } else if(attr.attribute_name == nullptr) {
     return RC::SCHEMA_FIELD_MISSING;
   } else {
-  bool flag = false;
-  for(int i = 0; i < selects.relation_num; i++){
-    if(((std::string)attr.relation_name).compare((std::string)selects.relations[i]) == 0){
-      flag = true;
-      break;
+    bool flag = false;
+    for(int i = 0; i < selects.relation_num; i++){
+      if(((std::string)attr.relation_name).compare((std::string)selects.relations[i]) == 0){
+        flag = true;
+        break;
+      }
+    }
+
+    if ( !flag ) {
+      return RC::SCHEMA_TABLE_NOT_EXIST;
+    } else {
+      Table * table = DefaultHandler::get_default().find_table(db, attr.relation_name);
+      if (nullptr == table->table_meta().field(attr.attribute_name)) {
+        LOG_WARN("No such field %s.%s", table->name(), attr.attribute_name);
+        return RC::SCHEMA_FIELD_MISSING;
+      }
+    } 
+  }
+  return rc;
+}
+
+//add zjx[join]b:202111010
+RC ExecuteStage::do_join_condition_check(Selects &selects, const char* db) {
+  RC rc = RC::SUCCESS;
+  // TupleSet* tmp_tupleset = new TupleSet();
+  TupleSchema* tmp_schema = new TupleSchema();
+  printf("%d\n",selects.joinnode_num);
+  for( int i = 0;i < selects.joinnode_num; i++ ) {
+    if( selects.joinnodes[i]->done_ ) {
+      Table * table = DefaultHandler::get_default().find_table(db, selects.joinnodes[i]->table_name_);
+      if (nullptr == table) {
+        LOG_WARN("No such table [%s] in db [%s]", selects.joinnodes[i]->table_name_, db);
+        return RC::SCHEMA_TABLE_NOT_EXIST;
+      }
+      TupleSchema::from_table(table, *tmp_schema);
+      continue;
+    } else {
+      if((rc = do_joinnode_condition_check(selects.joinnodes[i] ,db)) != RC::SUCCESS) {
+        return rc;
+      }
+      tmp_schema->append(*(TupleSchema*)selects.joinnodes[i]->tupleset_);
+    }
+  }
+  selects.joinnodes[0]->tupleset_ = tmp_schema;
+  printf("length: %d\n",tmp_schema->fields().size());
+  return rc;
+}
+
+RC ExecuteStage::do_joinnode_condition_check(JoinNode* &joinnode ,const char* db) {
+  RC rc = RC::SUCCESS;
+  if( joinnode == nullptr ){
+    return rc;
+  }
+
+  //如果当前是子节点,进行简单处理直接返回
+  if( joinnode->done_ ) {
+    Table * table = DefaultHandler::get_default().find_table(db, joinnode->table_name_);
+    if (nullptr == table) {
+      LOG_WARN("No such table [%s] in db [%s]", joinnode->table_name_, db);
+      return RC::SCHEMA_TABLE_NOT_EXIST;
+    }
+    TupleSchema* tmp = (TupleSchema*)joinnode->tupleset_;
+    TupleSchema::from_table(table, *tmp);
+    joinnode->tupleset_ = tmp;
+    return rc;
+  }
+
+  if((rc = do_joinnode_condition_check(joinnode->left_node_ , db)) != RC::SUCCESS ) {
+    return rc;
+  } else if((rc = do_joinnode_condition_check(joinnode->right_node_ , db)) != RC::SUCCESS ) {
+    return rc;
+  }
+
+  TupleSchema* tmp_schema = (TupleSchema*)joinnode->left_node_->tupleset_;
+  tmp_schema->append(*(TupleSchema*)joinnode->right_node_->tupleset_);
+  joinnode->tupleset_ = tmp_schema;
+
+  //判别,当前joinnode的join condition是否合法
+  if( joinnode->join_type_ ) {  //product类型,直接返回
+    return rc;
+  } else {
+    joinnode->join_condition;
+    RelAttr left_attr = joinnode->join_condition.left_attr;
+    RelAttr right_attr = joinnode->join_condition.right_attr;
+    if( joinnode->join_condition.left_is_attr == 0 ) { //condition左侧属性
+      int l_index = -1;
+      if((rc = do_inner_joinnode_condition_check(tmp_schema, left_attr, l_index)) != RC::SUCCESS) {
+        return rc;
+      }
+      const TupleField l_tmp_feild = tmp_schema->field(l_index);
+      if( joinnode->join_condition.right_is_attr == 1 ) { //condition左侧属性,右侧值
+        if(!condition_type_check(joinnode->join_condition.right_value.type, l_tmp_feild.type(), joinnode->join_condition.comp_type)) {
+	return RC::CONDITION_ERROR; 
+	}
+      } else { //condition左侧属性,右侧属性
+        int r_index = -1;
+        if((rc = do_inner_joinnode_condition_check(tmp_schema, left_attr, r_index)) != RC::SUCCESS) {
+          return rc;
+        }
+	const TupleField r_tmp_feild = tmp_schema->field(r_index);
+        if(!condition_type_check(l_tmp_feild.type(), r_tmp_feild.type(), joinnode->join_condition.comp_type)){
+	 return RC::CONDITION_ERROR; 	
+	}
+      }
+    } else if( joinnode->join_condition.right_is_attr == 0 ){ //condition左侧值,右侧属性
+      int r_index = -1;
+      if((rc = do_inner_joinnode_condition_check(tmp_schema, right_attr, r_index)) != RC::SUCCESS) {
+        return rc;
+      }
+	const TupleField r_tmp_feild = tmp_schema->field(r_index);
+      if(!condition_type_check(joinnode->join_condition.left_value.type, r_tmp_feild.type(), joinnode->join_condition.comp_type, 1, 0)) {
+      return RC::CONDITION_ERROR;
+      } 
+    } else {
+      if(!condition_type_check(joinnode->join_condition.left_value.type, joinnode->join_condition.right_value.type,joinnode->join_condition.comp_type, 1, 1)) {
+      return RC::CONDITION_ERROR;
+      }
+    }
+  }
+  return rc;
+}
+
+
+RC ExecuteStage::do_inner_joinnode_condition_check(TupleSchema *tmp_schema, RelAttr attr, int &index) {
+  RC rc = RC::SUCCESS;
+  if ( attr.relation_name == nullptr 
+        || attr.attribute_name == nullptr) {
+          return RC::CONDITION_ERROR;
+        }
+  if((index = tmp_schema->index_of_field(attr.relation_name, attr.attribute_name)) == -1) {
+    return RC::CONDITION_ERROR; 
+  }
+  return rc;
+}
+
+bool ExecuteStage::condition_type_check( AttrType left_type, AttrType right_type, AttrType &comp_type, int l_flag, int r_flag) {
+  if( left_type == right_type ) { 
+    comp_type = left_type;
+    return true; 
+  }
+  if( (left_type == INTS && right_type == FLOATS)
+      ||(right_type == INTS && left_type == FLOATS) ) { 
+    comp_type = FLOATS;
+    return true;
+  }
+
+  if( (left_type == CHARS && right_type == DATES && r_flag == 0 && l_flag == 1 ) 
+  || (right_type == CHARS && left_type == DATES && l_flag == 0 && r_flag == 1)) {
+    comp_type = DATES;
+    return true;
+  }
+  return false;
+}
+
+bool ExecuteStage::condition_judge( Condition join_condition )
+{
+  char *left_value = nullptr;
+  char *right_value = nullptr;
+
+  left_value = (char *)join_condition.left_value.data;
+  right_value = (char *)join_condition.right_value.data;
+
+  if(left_value == nullptr || right_value == nullptr) {return false;}
+
+  int cmp_result = 0;
+  switch (join_condition.comp_type) {
+    case CHARS: {  // 字符串都是定长的，直接比较
+      // 按照C字符串风格来定
+      cmp_result = strcmp(left_value, right_value);
+    } break;
+    case INTS: {
+      // 没有考虑大小端问题
+      // 对int和float，要考虑字节对齐问题,有些平台下直接转换可能会跪
+      int left = *(int *)left_value;
+      int right = *(int *)right_value;
+      cmp_result = left - right;
+    } break;
+    case FLOATS: {
+      float left = *(float *)left_value;
+      float right = *(float *)right_value;
+      cmp_result = (int)(left - right);
+    } break;
+    default: {
     }
   }
 
-  if ( !flag ) {
-    return RC::SCHEMA_TABLE_NOT_EXIST;
-  } else {
-    Table * table = DefaultHandler::get_default().find_table(db, attr.relation_name);
-    if (nullptr == table->table_meta().field(attr.attribute_name)) {
-      LOG_WARN("No such field %s.%s", table->name(), attr.attribute_name);
-      return RC::SCHEMA_FIELD_MISSING;
-    }
-  } 
-}
-  return rc;
+  switch (join_condition.comp) {
+    case EQUAL_TO:
+      return 0 == cmp_result;
+    case LESS_EQUAL:
+      return cmp_result <= 0;
+    case NOT_EQUAL:
+      return cmp_result != 0;
+    case LESS_THAN:
+      return cmp_result < 0;
+    case GREAT_EQUAL:
+      return cmp_result >= 0;
+    case GREAT_THAN:
+      return cmp_result > 0;
+
+    default:
+      break;
+  }
+
+  LOG_PANIC("Never should print this.");
+  return cmp_result;  // should not go here
 }
 
 // add szj [select aggregate support]20211106:b
