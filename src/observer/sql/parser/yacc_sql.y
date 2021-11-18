@@ -75,7 +75,7 @@ ParserContext *get_context(yyscan_t scanner)
         TABLES
         INDEX
         SELECT
-        DESC
+        DESC	//add zjx[order by]b:20211103
         SHOW
         SYNC
         INSERT
@@ -111,6 +111,12 @@ ParserContext *get_context(yyscan_t scanner)
         GE
         NE
 		ONE  // add szj [select aggregate support]20211106
+		//add zjx[order by]b:20211103
+		ASC
+		BY
+		ORDER
+		//add zjx[group by]b:20211111
+		GROUP
 
 %union {
   struct _Attr *attr;
@@ -119,7 +125,8 @@ ParserContext *get_context(yyscan_t scanner)
   char *string;
   int number;
   float floats;
-	char *position;
+  char *position;
+  struct RelAttr *relatr; //zjx [order by]b:20211108
 }
 
 // add:e
@@ -134,9 +141,11 @@ ParserContext *get_context(yyscan_t scanner)
 
 %type <number> type;
 %type <number> date;//add zjx[date]b:20211027
+%type <string> order_type;//zjx [order by]b:20211103
 %type <condition1> condition;
 %type <value1> value;
 %type <number> number;
+%type <relatr> id_group //zjx [order by]b:20211108
 
 %%
 
@@ -373,8 +382,9 @@ update:			/*  update 语句的语法解析树*/
 			CONTEXT->condition_length = 0;
 		}
     ;
+//add zjx[order by]b:20211103 //add zjx[group by]b:20211111
 select:				/*  select 语句的语法解析树*/
-    SELECT select_attr FROM ID rel_list where SEMICOLON
+    SELECT select_attr FROM ID rel_list where orderby groupby SEMICOLON
 		{
 			// CONTEXT->ssql->sstr.selection.relations[CONTEXT->from_length++]=$4;
 			selects_append_relation(&CONTEXT->ssql->sstr.selection, $4);
@@ -392,13 +402,6 @@ select:				/*  select 语句的语法解析树*/
 			CONTEXT->select_length=0;
 			CONTEXT->value_length = 0;
 	}
-	//add zjx[select]b:20211021
-	//|select UNION select
-	//	{
-	//		selects_append_selects
-	//}
-	//e:20211021
-	;
 
 select_attr:
     STAR {  
@@ -743,7 +746,44 @@ comOp:
     | GE { CONTEXT->comp = GREAT_EQUAL; }
     | NE { CONTEXT->comp = NOT_EQUAL; }
     ;
-
+//add zjx[group by]b:20211111
+groupby:
+	/*empty*/	
+//	|
+//	GROUP BY id_group {
+//		selects_append_groups( &CONTEXT->ssql->sstr.selection, $3);
+//	}
+;
+//add zjx[order by]b:20211103
+orderby:
+	/*empty*/	
+	|
+	ORDER BY id_group order_type {
+		selects_append_orders( &CONTEXT->ssql->sstr.selection, $3, $4 );
+	}
+	| ORDER BY id_group order_type COMMA id_group order_type {
+		selects_append_orders( &CONTEXT->ssql->sstr.selection, $3, $4 );
+		selects_append_orders( &CONTEXT->ssql->sstr.selection, $6, $7 );
+	}
+	;
+	
+order_type :
+	/* empty */{ $$ = ASCEND; }
+	| ASC { $$ = ASCEND; }
+	| DESC { $$ = DESCEND; }
+	;
+id_group : //add zjx[order by]b:20211108
+	ID DOT ID {
+		RelAttr* new_relattr = (RelAttr *) malloc(sizeof(RelAttr));
+		relation_attr_init(new_relattr, $1, $3);
+		$$ = new_relattr;
+	}
+	| ID {
+		RelAttr new_relattr;
+		relation_attr_init(&new_relattr, NULL, $1);
+		$$ = &new_relattr;
+	}
+	;
 load_data:
 		LOAD DATA INFILE SSS INTO TABLE ID SEMICOLON
 		{

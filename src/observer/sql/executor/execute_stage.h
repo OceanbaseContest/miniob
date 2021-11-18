@@ -4,7 +4,7 @@
  * @Author: MoonKnight
  * @Date: 2021-10-28 20:56:08
  * @LastEditors: MoonKnight
- * @LastEditTime: 2021-11-17 21:09:13
+ * @LastEditTime: 2021-11-18 10:38:49
  */
 /* Copyright (c) 2021 Xie Meiyi(xiemeiyi@hust.edu.cn) and OceanBase and/or its affiliates. All rights reserved.
 miniob is licensed under Mulan PSL v2.
@@ -88,6 +88,9 @@ private:
   RC do_inner_joinnode_condition_check(TupleSchema *tmp_schema, RelAttr attr, int &index);
   bool condition_type_check( AttrType left_type, AttrType right_type, AttrType &comp_type, int l_flag = 0, int r_flag = 0);
   bool condition_judge(Condition join_condition);
+  //add zjx[order by]b:20211103
+  RC do_order_check(Selects &selects, const char* db); 
+  RC do_order_by(Selects &selects, TupleSet* &tmp_tuple);
 protected:
 private:
   Stage *default_storage_stage_ = nullptr;

@@ -132,6 +132,9 @@ public:
   void add(const Tuple &tuple); //add zjx[select]b:20211028
 
   void clear();
+  //add zjx[order by]b:20211103
+  void sort(int index_f, int order_type_f = 1);
+  void double_sort(int index_f, int index_s, int order_type_f = 1, int order_type_s = 1);
 
   bool is_empty() const;
   int size() const;

@@ -46,7 +46,7 @@ QUOTE            [\'\"]
 "*"                   					         RETURN_TOKEN(STAR);
 [Ee][Xx][Ii][Tt]						             RETURN_TOKEN(EXIT);
 [Hh][Ee][Ll][Pp]                    	   RETURN_TOKEN(HELP);
-[Dd][Ee][Ss][Cc]                         RETURN_TOKEN(DESC);
+[Dd][Ee][Ss][Cc]                         RETURN_TOKEN(DESC);//add zjx[order by]b:20211024
 [Cc][Rr][Ee][Aa][Tt][Ee]                 RETURN_TOKEN(CREATE);
 [Dd][Rr][Oo][Pp]                    	   RETURN_TOKEN(DROP);
 [Tt][Aa][Bb][Ll][Ee]					           RETURN_TOKEN(TABLE);
@@ -75,6 +75,11 @@ QUOTE            [\'\"]
 [Ll][Oo][Aa][Dd]			                   RETURN_TOKEN(LOAD);
 [Dd][Aa][Tt][Aa]	                       RETURN_TOKEN(DATA);
 [Ii][Nn][Ff][Ii][Ll][Ee]                 RETURN_TOKEN(INFILE);
+[Aa][Ss][Cc]                             RETURN_TOKEN(ASC);//add zjx[order by]b:20211108
+[Bb][Yy]                                 RETURN_TOKEN(BY);//add zjx[order by]b:20211108
+[Oo][Rr][Dd][Ee][Rr]                     RETURN_TOKEN(ORDER);//add zjx[order by]b:20211108
+[Gg][Rr][Oo][Uu][Pp]					 RETURN_TOKEN(GROUP);//add zjx[group by]b:20211111
+
 	/* add zjx[select]b:20211024 */
     /*[Jj][Ii][Oo][Nn]						 RETURN_TOKEN(JOIN); */
   /* add szj [select aggregate support]20211106:b */

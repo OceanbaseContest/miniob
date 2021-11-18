@@ -18,7 +18,9 @@ See the Mulan PSL v2 for more details. */
 #include <map>
 #include <vector>
 //e:20211022
-
+//add zjx[order by]b:20211108
+#include<algorithm> 
+#include<string.h>
 
 #include "execute_stage.h"
 
@@ -333,6 +335,22 @@ RC ExecuteStage::do_select(const char *db, Query *sql, SessionEvent *session_eve
     }
   } 
 
+  // if( rc == RC::SUCCESS ) { //add zjx[group by]b:20211104
+  //   if(selects.group_num > 0) {
+  //     if( optimized_join_tree != nullptr ) {
+  //       TupleSet* tmp_schema = (TupleSet*)optimized_join_tree->tupleset_;
+  //       rc = do_group_by(group_by_relattr, tmp_schema, );
+  //       optimized_join_tree->tupleset_ = tmp_schema;
+	//     } else {
+  //       TupleSet* tmp_schema = tuple_sets[0];
+  //       rc = do_group_by(group_by_relattr, tmp_schema);
+  //       tuple_sets[0] = tmp_schema;
+  //     }
+  //   }
+  // } else {
+  //   return rc;
+  // }
+
   LOG_INFO("MotherFucker!!!the aggre_flag is %d", selects.aggr_flag);
   if (selects.aggr_flag == false) {
     if (select_nodes.size() > 1) {
@@ -364,6 +382,18 @@ RC ExecuteStage::do_select(const char *db, Query *sql, SessionEvent *session_eve
       tuple_sets[0] = tmp_tuple;
     }
   } 
+
+  if(selects.order_num > 0) { //add zjx[order by]b:20211104
+    if( optimized_join_tree != nullptr ) {
+      TupleSet* tmp_schema = (TupleSet*)optimized_join_tree->tupleset_;
+      rc = do_order_by(selects, tmp_schema);
+      optimized_join_tree->tupleset_ = tmp_schema;
+    } else {
+      TupleSet* tmp_schema = tuple_sets[0];
+      rc = do_order_by(selects, tmp_schema);
+      tuple_sets[0] = tmp_schema;
+    }
+  }
   
   for (SelectExeNode *& tmp_node: select_nodes) {
     delete tmp_node;
@@ -577,9 +607,20 @@ RC ExecuteStage::do_check(Selects &selects, const char* db, SessionEvent * &sess
   }
 
   //order_condition check
+  //add zjx[order by]b:20211103
+  if( selects.order_num > 0 ) {
+    if((rc = do_order_check(selects, db)) != RC::SUCCESS){
+      return rc;
+     }
+  }
 
   //group_by_condition check
-
+  //add zjx[group by]b:20211103
+  // if( selects.group_num > 0 ) {
+  //   if((rc = do_group_by_check(selects, db, group_by_relattr)) != RC::SUCCESS) {
+  //     return rc;
+  //    }
+  // }
   return rc;
 }
 
@@ -602,8 +643,6 @@ RC ExecuteStage::do_select_attr_check(Selects &selects, const char* db, SessionE
 
   for(size_t i = 0; i < selects.attr_num; i++){
     if( 0 == strcmp(selects.attributes[i].relAttr.attribute_name,"*")) {
-	printf("hello\n");
-	printf("length: %d\n",((TupleSchema*)selects.joinnodes[0]->tupleset_)->fields().size());
       tmp_schema->append(*(TupleSchema*)selects.joinnodes[0]->tupleset_);
 	continue;
     }
@@ -708,12 +747,23 @@ RC ExecuteStage::check_and_fix(Selects &selects, const char* db, RelAttr &attr) 
   return rc;
 }
 
+//add zjx[order by]b:20211103
+RC ExecuteStage::do_order_check(Selects &selects, const char* db) {
+  RC rc = RC::SUCCESS;
+
+  for(size_t i = 0; i < selects.order_num; i++){
+    if((rc = check_and_fix(selects, db, selects.orders[i].relAttr)) != RC::SUCCESS) {
+      return rc;
+    }
+  }
+  return rc;
+} 
+
 //add zjx[join]b:202111010
 RC ExecuteStage::do_join_condition_check(Selects &selects, const char* db) {
   RC rc = RC::SUCCESS;
   // TupleSet* tmp_tupleset = new TupleSet();
   TupleSchema* tmp_schema = new TupleSchema();
-  printf("%d\n",selects.joinnode_num);
   for( int i = 0;i < selects.joinnode_num; i++ ) {
     if( selects.joinnodes[i]->done_ ) {
       Table * table = DefaultHandler::get_default().find_table(db, selects.joinnodes[i]->table_name_);
@@ -731,7 +781,6 @@ RC ExecuteStage::do_join_condition_check(Selects &selects, const char* db) {
     }
   }
   selects.joinnodes[0]->tupleset_ = tmp_schema;
-  printf("length: %d\n",tmp_schema->fields().size());
   return rc;
 }
 
@@ -893,6 +942,23 @@ bool ExecuteStage::condition_judge( Condition join_condition )
 
   LOG_PANIC("Never should print this.");
   return cmp_result;  // should not go here
+}
+
+//add zjx[order by]b:20211103
+RC ExecuteStage::do_order_by(Selects &selects, TupleSet* &tmp_tuple) {
+  RC rc = RC::SUCCESS;
+
+  int index_f,index_s;
+  TupleSchema tmp_schema = tmp_tuple->get_schema();
+  if( selects.order_num == 1){  
+    if((index_f = tmp_schema.index_of_field( selects.orders[0].relAttr.relation_name, selects.orders[0].relAttr.attribute_name )) == -1) {return RC::CONDITION_ERROR; }
+    tmp_tuple->sort(index_f, selects.orders[0].ordertype);
+  } else if( selects.order_num == 2 ) {
+    if((index_s = tmp_schema.index_of_field( selects.orders[1].relAttr.relation_name, selects.orders[1].relAttr.attribute_name )) == -1) {return RC::CONDITION_ERROR; }
+    if((index_f = tmp_schema.index_of_field( selects.orders[0].relAttr.relation_name, selects.orders[0].relAttr.attribute_name )) == -1) {return RC::CONDITION_ERROR; }
+    tmp_tuple->double_sort(index_f, index_s, selects.orders[0].ordertype, selects.orders[1].ordertype);
+  }
+  return rc;
 }
 
 // add szj [select aggregate support]20211106:b

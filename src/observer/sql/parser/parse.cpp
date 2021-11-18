@@ -214,6 +214,27 @@ void selects_append_joinnode(Selects *selects, const char *relation_name, int ju
 }
 //e:20211028
 
+//add zjx[order by]b:20211103
+void ordercondition_destroy(OrderCondition *order_relation_attr) {
+  free(order_relation_attr->relAttr.relation_name);
+  free(order_relation_attr->relAttr.attribute_name);
+  order_relation_attr->relAttr.relation_name = nullptr;
+  order_relation_attr->relAttr.attribute_name = nullptr;
+}
+
+
+void selects_append_orders(Selects *selects, RelAttr *relattr, int order_type) { 
+  OrderCondition order_condition;
+  order_condition.relAttr = *relattr;
+  if( order_type == 2 ) { 
+	order_condition.ordertype = 0;
+  } else {
+	order_condition.ordertype = 1;
+   }
+  selects->orders[selects->order_num++] = order_condition;
+}
+//e:20211103
+
 void selects_append_conditions(Selects *selects, Condition conditions[], size_t condition_num) {
   assert(condition_num <= sizeof(selects->conditions)/sizeof(selects->conditions[0]));
   for (size_t i = 0; i < condition_num; i++) {
@@ -239,6 +260,12 @@ void selects_destroy(Selects *selects) {
     condition_destroy(&selects->conditions[i]);
   }
   selects->condition_num = 0;
+
+  //add zjx[order by]b:20211109
+  for (size_t i = 0; i < selects->order_num; i++) {
+    ordercondition_destroy(&selects->orders[i]);
+  }
+  selects->order_num = 0;
 }
 
 // add szj [insert multi values]20211029:b

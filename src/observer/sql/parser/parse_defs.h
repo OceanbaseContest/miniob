@@ -23,6 +23,8 @@ See the Mulan PSL v2 for more details. */
 #define MAX_ATTR_NAME 20
 #define MAX_ERROR_MESSAGE 20
 #define MAX_DATA 50
+#define MAX_ORDERNUM 2 //add zjx[order by]b:20211103
+#define MAX_GROUPNUM 1
 
 
 //属性结构体
@@ -31,6 +33,12 @@ typedef struct {
   char *attribute_name;  // attribute name              属性名
 } RelAttr;
 
+//add zjx[order by]b:20211103
+//排序结构体
+typedef struct ordercondition{
+  RelAttr relAttr;
+  int ordertype;         //1 for asc, 0 for desc
+} OrderCondition;
 
 // add szj [select aggregate support]20211106:b
 // typedef enum { NONE, SUM, MAX, AVG, COUNT} AggrType;
@@ -54,6 +62,9 @@ typedef enum {
   GREAT_THAN,   //">"     5
   NO_OP
 } CompOp;
+
+//zjx [order by]b:20211103
+typedef enum { CONIDTION_UNDEFINED, ASCEND, DESCEND } OrderType;
 
 //属性值类型
 typedef enum { UNDEFINED, CHARS, INTS, FLOATS, DATES} AttrType; //add zjx[date]b:20211026
@@ -104,6 +115,8 @@ typedef struct {
   Condition conditions[MAX_NUM];    // conditions in Where clause
   size_t    joinnode_num;            
   JoinNode* joinnodes[MAX_NUM];
+  size_t    order_num;               //add zjx[order by]b:20211103
+  OrderCondition   orders[MAX_ORDERNUM];         //add zjx[order by]b:20211103
   bool      aggr_flag;              // add szj [select aggregate support]
 } Selects;
 
@@ -244,6 +257,10 @@ void selects_append_attribute(Selects *selects, ColAttr *rel_attr); // add szj [
 void selects_append_relation(Selects *selects, const char *relation_name);
 void selects_append_conditions(Selects *selects, Condition conditions[], size_t condition_num);
 void selects_append_joinnode(Selects *selects, const char *relation_name, int judge); //add zjx[select]b:20211028
+//add zjx[order by]b:20211103
+void selects_append_orders(Selects *selects, RelAttr *relattr, int order_type); //add zjx[select]b:20211028
+void ordercondition_destroy(OrderCondition *order_relation_attr);
+
 void selects_destroy(Selects *selects);
 
 // void inserts_init(Inserts *inserts, const char *relation_name, Value values[], size_t value_num);

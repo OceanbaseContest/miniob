@@ -15,6 +15,7 @@ See the Mulan PSL v2 for more details. */
 #include "sql/executor/tuple.h"
 #include "storage/common/table.h"
 #include "common/log/log.h"
+#include <algorithm> //add zjx[order by]b:20211108
 
 Tuple::Tuple(const Tuple &other) {
   LOG_PANIC("Copy constructor of tuple is not supported");
@@ -98,7 +99,6 @@ void TupleSchema::add_if_not_exists(AttrType type, const char *table_name, const
 }
 
 void TupleSchema::append(const TupleSchema &other) {
-printf("%d%d\n",fields_.size(),other.fields_.size());
   fields_.reserve(fields_.size() + other.fields_.size());
   for (const auto &field: other.fields_) {
     fields_.emplace_back(field);
@@ -199,6 +199,80 @@ void TupleSet::clear() {
   tuples_.clear();
   schema_.clear();
 }
+
+//add zjx[order by]b:20211103
+int index_;//仅用于内部排序所用的位置参数
+
+bool compare_asc(const Tuple &a, const Tuple &b){
+  return a.get(index_).compare(b.get(index_)) <= 0?true:false;
+}
+
+bool compare_desc(const Tuple &a, const Tuple &b){
+  return a.get(index_).compare(b.get(index_)) >= 0?true:false;
+}
+
+/**
+ * @name: sort
+ * @test: 
+ * @msg: 单排序
+ * @param {int} index_f
+ * @param {int} order_type_f
+ * @return {*}
+ */
+void TupleSet::sort(int index_f, int order_type_f){
+  index_ = index_f;
+  if(order_type_f == 1){
+    std::sort( tuples_.begin(), tuples_.end(), compare_asc);
+  } else {
+    std::sort( tuples_.begin(), tuples_.end(), compare_desc);
+  }
+}
+
+/**
+ * @name: double_sort
+ * @test: 
+ * @msg: 双重排序
+ * @param {int} index_f
+ * @param {int} index_s
+ * @param {int} order_type_f
+ * @param {int} order_type_s
+ * @return {*}
+ */
+void TupleSet::double_sort(int index_f, int index_s, int order_type_f, int order_type_s){
+  index_ = index_f;
+  if (order_type_f == 1) {
+    std::sort( tuples_.begin(), tuples_.end(), compare_asc);
+  } else {
+    std::sort( tuples_.begin(), tuples_.end(), compare_desc);
+  }
+
+  if( index_f == index_s && order_type_f == order_type_s ) {
+    return;
+  } else {
+    index_ = index_s;
+    int tmp_count = 1;
+    std::vector<Tuple>::iterator iter = tuples_.begin();
+    for( int i = 1;i < tuples_.size(); i++ ) {
+	    tmp_count++;
+      if ((tuples_.at(i).get(index_f)).compare(tuples_.at(i-1).get(index_f)) != 0) {
+        if(tmp_count > 1) {
+          if (order_type_s == 1) {
+            std::sort( iter+i-tmp_count+1, iter+i, compare_asc);
+          } else {
+            std::sort( iter+i-tmp_count+1, iter+i, compare_desc);
+             }
+          } 
+        tmp_count = 1;
+       }
+    }
+    if ( order_type_s == 1 ) {
+      std::sort( tuples_.end()-tmp_count, tuples_.end(), compare_asc);
+    } else {
+      std::sort( tuples_.end()-tmp_count, tuples_.end(), compare_desc);
+    }
+  } 
+}
+//e:20211103
 
 void TupleSet::print(std::ostream &os) const {
   if (schema_.fields().empty()) {
